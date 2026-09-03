@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Price Guessing Game — Guess the Price of Mystery Items Daily (Free)</title>
+<meta name="description" content="A free daily price guessing game: bid on 5 mystery storage auction items, see the real prices, and share your score like Wordle. New puzzle every day. No sign-up, plays in your browser." />
+<link rel="canonical" href="https://priceguessinggame.com/" />
+<meta name="robots" content="index, follow" />
+<meta name="theme-color" content="#e8590c" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%B7%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Price Guessing Game" />
+<meta property="og:title" content="Price Guessing Game — Can You Guess the Price?" />
+<meta property="og:description" content="Bid on 5 mystery storage auction items a day. See how close you get to the real price and share your score. Free, no sign-up." />
+<meta property="og:url" content="https://priceguessinggame.com/" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Price Guessing Game — Can You Guess the Price?" />
+<meta name="twitter:description" content="Bid on 5 mystery storage auction items a day and share your score. Free daily guessing game." />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Price Guessing Game",
+  "url": "https://priceguessinggame.com/",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "A free daily price guessing game. Bid on 5 mystery storage auction items, compare with real prices, and share your score."
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is the Price Guessing Game?",
+      "acceptedAnswer": { "@type": "Answer", "text": "It is a free daily guessing game. Every day you get one mystery storage auction unit with 5 items. You guess what each item is really worth, then see how close you got. It works like Wordle: one puzzle per day, and you can share your result without spoiling the answers." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I play the price guessing game?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Look at the item card — the name, condition and details are all you get. Type what you think it is worth in dollars and place your bid. The real price is revealed immediately with your accuracy score. Guess all 5 items to finish the unit." }
+    },
+    {
+      "@type": "Question",
+      "name": "How is my score calculated?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Each item is scored out of 100 based on how far your bid was from the real price: within 10% earns a green tag, within 25% yellow, within 50% orange, and beyond that red. The closer you are, the more points you keep — a perfect unit is 500." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is there a new puzzle every day?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. A new storage unit unlocks every day at midnight, and everyone in the world gets the same 5 items — so the share card is a fair comparison. You can also play unlimited bonus units any time." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is the game free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely free, no account or sign-up needed. Everything runs in your browser and your streak is saved on your device." }
+    }
+  ]
+}
+</script>
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<a class="skip" href="#game">Skip to game</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/">🏷️ Price<span>Guessing</span>Game</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="#how-to-play">How to Play</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <h1>Price Guessing Game</h1>
+    <p class="tagline">One mystery storage unit a day. <strong>5 items, 5 bids</strong> — how close can you get to the real price?</p>
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><span class="stat-num" id="stat-streak">0</span><span class="stat-label">🔥 Streak</span></div>
+      <div class="stat"><span class="stat-num" id="stat-played">0</span><span class="stat-label">Units played</span></div>
+      <div class="stat"><span class="stat-num" id="stat-best">0</span><span class="stat-label">Best score</span></div>
+    </div>
+  </section>
+
+  <section class="game wrap" id="game" aria-label="Daily price guessing game">
+    <div class="unit-head">
+      <div>
+        <div class="unit-title" id="unit-title">Storage Unit #—</div>
+        <div class="unit-date" id="unit-date"></div>
+      </div>
+      <div class="progress" id="progress" aria-label="Progress"></div>
+    </div>
+
+    <!-- Item card -->
+    <article class="card item-card" id="item-card" hidden>
+      <div class="item-emoji" id="item-emoji" aria-hidden="true">📦</div>
+      <h2 class="item-name" id="item-name">Mystery Item</h2>
+      <p class="item-desc" id="item-desc">Loading…</p>
+      <div class="bid-row">
+        <label class="bid-label" for="bid-input">Your bid</label>
+        <div class="bid-input-wrap">
+          <span class="bid-prefix" aria-hidden="true">$</span>
+          <input id="bid-input" type="number" inputmode="numeric" min="1" max="9999999" step="1" placeholder="250" autocomplete="off" />
+        </div>
+        <button id="bid-btn" class="btn btn-primary" type="button">Place Bid</button>
+      </div>
+      <p class="bid-hint" id="bid-hint"></p>
+    </article>
+
+    <!-- Reveal panel -->
+    <article class="card reveal-card" id="reveal-card" hidden>
+      <div class="reveal-tier" id="reveal-tier" aria-live="polite">🟩</div>
+      <div class="reveal-price" id="reveal-price">$0</div>
+      <div class="reveal-line">Real price — you bid <strong id="reveal-guess">$0</strong>, off by <strong id="reveal-diff">0%</strong></div>
+      <div class="reveal-label" id="reveal-label">Nailed it!</div>
+      <div class="reveal-score" id="reveal-score">+100 pts</div>
+      <button id="next-btn" class="btn btn-primary" type="button">Next Item →</button>
+    </article>
+
+    <!-- Results panel -->
+    <article class="card results-card" id="results-card" hidden>
+      <h2 class="results-title" id="results-title">Unit Complete!</h2>
+      <div class="results-score" id="results-score">0 / 500</div>
+      <ul class="results-list" id="results-list"></ul>
+      <button id="share-btn" class="btn btn-primary" type="button">Share Result 📋</button>
+      <p class="share-hint" id="share-hint" aria-live="polite"></p>
+      <button id="bonus-btn" class="btn btn-ghost" type="button">Play a Bonus Unit ♻️</button>
+      <div class="countdown" id="countdown" hidden>
+        Next unit in <strong id="countdown-time">--:--:--</strong>
+      </div>
+    </article>
+  </section>
+
+  <section class="wrap section" id="how-to-play">
+    <h2>How to Play the Price Guessing Game</h2>
+    <ol class="howto">
+      <li><strong>Open today's storage unit.</strong> Every day at midnight a new unit with 5 mystery items unlocks — the same 5 items for everyone.</li>
+      <li><strong>Study the item card.</strong> You get the item's name, condition and a few telling details. That's all the intel you get, just like at a real storage auction.</li>
+      <li><strong>Place your bid.</strong> Type what you think the item is really worth in dollars. Trust your gut — bargain hunters and eBay veterans have a real edge here.</li>
+      <li><strong>See the reveal.</strong> The real price appears instantly. Within 10% is a green tag 🟩, within 25% yellow 🟨, within 50% orange 🟧, otherwise red 🟥.</li>
+      <li><strong>Finish the unit and share.</strong> Each item scores up to 100 points (a perfect unit is 500). Copy your spoiler-free share card and challenge your friends to guess the price.</li>
+    </ol>
+    <p class="howto-note">Want more after the daily unit? Hit <strong>“Play a Bonus Unit”</strong> for unlimited random units — great practice for the daily auction game.</p>
+  </section>
+
+  <section class="wrap section" id="faq">
+    <h2>Price Guessing Game FAQ</h2>
+    <details>
+      <summary>What is the Price Guessing Game?</summary>
+      <p>A free daily guessing game in the spirit of Wordle. Each day brings one mystery storage auction unit with 5 items. You guess the price of each item, see how close you got, and share your result — without spoiling the answers for anyone else.</p>
+    </details>
+    <details>
+      <summary>How is my score calculated?</summary>
+      <p>Each item is worth up to 100 points, based on how far your bid was from the real price. Within 10% = 🟩, within 25% = 🟨, within 50% = 🟧, beyond = 🟥. The closer your bid, the more points you keep.</p>
+    </details>
+    <details>
+      <summary>Is there really a new puzzle every day?</summary>
+      <p>Yes — a new storage unit unlocks at midnight, and everyone around the world plays the same 5 items, so scores are directly comparable. Streaks are tracked on your device.</p>
+    </details>
+    <details>
+      <summary>Is it free? Do I need an account?</summary>
+      <p>Completely free, no account, no sign-up, no download. The whole game runs in your browser and works on phones, tablets and desktops.</p>
+    </details>
+    <details>
+      <summary>Where do the item prices come from?</summary>
+      <p>Items are typical storage-auction and secondhand-market finds, and each price reflects a realistic market value for that item's condition — the kind of number you'd see the unit actually hammer for at auction.</p>
+    </details>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>🏷️ PriceGuessingGame — a free daily auction game about guessing what things are really worth.</p>
+    <p class="foot-note">Made for people who watch storage auctions and shout bids at the TV.</p>
+  </div>
+</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

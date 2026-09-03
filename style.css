@@ -1,0 +1,185 @@
+/* Price Guessing Game — styles
+ * Mobile-first, warm auction vibe, zero external requests (system font stack).
+ */
+:root {
+  --bg: #faf7f2;
+  --card: #ffffff;
+  --ink: #241f1a;
+  --muted: #7a6f63;
+  --accent: #e8590c;
+  --accent-dark: #c94a08;
+  --accent-soft: #ffe8d9;
+  --line: #e9e0d4;
+  --green: #2f9e44;
+  --yellow: #e8b004;
+  --orange: #f08c00;
+  --red: #e03131;
+  --radius: 16px;
+  --shadow: 0 4px 20px rgba(60, 40, 20, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.55;
+}
+
+.wrap { max-width: 680px; margin: 0 auto; padding: 0 16px; }
+
+.skip {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 0 0 8px 0; z-index: 99;
+}
+.skip:focus { left: 0; }
+
+/* ---------- Header ---------- */
+.site-header {
+  background: var(--card);
+  border-bottom: 3px solid var(--accent);
+  position: sticky; top: 0; z-index: 10;
+}
+.header-inner { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; }
+.brand { font-size: 1.05rem; font-weight: 800; text-decoration: none; color: var(--ink); letter-spacing: -0.02em; }
+.brand span { color: var(--accent); }
+.site-nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; margin-left: 16px; }
+.site-nav a:hover { color: var(--accent); }
+
+/* ---------- Hero ---------- */
+.hero { text-align: center; padding: 28px 16px 8px; }
+.hero h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.8rem, 6vw, 2.6rem);
+  letter-spacing: -0.03em;
+}
+.tagline { margin: 0 auto; max-width: 34em; color: var(--muted); font-size: 1.02rem; }
+.tagline strong { color: var(--ink); }
+
+.stats { display: flex; justify-content: center; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+.stat {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 8px 18px; min-width: 92px; box-shadow: var(--shadow);
+}
+.stat-num { display: block; font-size: 1.3rem; font-weight: 800; }
+.stat-label { font-size: 0.75rem; color: var(--muted); }
+
+/* ---------- Game ---------- */
+.game { padding: 20px 16px 8px; }
+
+.unit-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; }
+.unit-title { font-weight: 800; font-size: 1.15rem; }
+.unit-date { color: var(--muted); font-size: 0.85rem; }
+
+.progress { display: flex; gap: 6px; padding-bottom: 4px; }
+.dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--line); display: inline-block; transition: transform 0.15s;
+}
+.dot-current { transform: scale(1.35); box-shadow: 0 0 0 2px var(--accent-soft); }
+.dot-t-green { background: var(--green); }
+.dot-t-yellow { background: var(--yellow); }
+.dot-t-orange { background: var(--orange); }
+.dot-t-red { background: var(--red); }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 22px 20px; text-align: center;
+}
+
+.item-emoji { font-size: 3.4rem; line-height: 1.15; margin-bottom: 6px; }
+.item-name { margin: 0 0 4px; font-size: 1.25rem; letter-spacing: -0.01em; }
+.item-desc { color: var(--muted); margin: 0 0 18px; font-size: 0.95rem; }
+
+.bid-row { display: flex; gap: 8px; justify-content: center; align-items: stretch; flex-wrap: wrap; }
+.bid-label { width: 100%; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+.bid-input-wrap {
+  position: relative; display: flex; align-items: center;
+  border: 2px solid var(--line); border-radius: 12px; background: #fff;
+  transition: border-color 0.15s;
+}
+.bid-input-wrap:focus-within { border-color: var(--accent); }
+.bid-prefix { padding-left: 14px; color: var(--muted); font-weight: 700; }
+.bid-input-wrap input {
+  border: none; outline: none; font-size: 1.15rem; font-weight: 700;
+  padding: 12px 14px; width: 140px; background: transparent; color: var(--ink);
+  font-family: inherit;
+}
+.bid-input-wrap input::-webkit-outer-spin-button,
+.bid-input-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bid-input-wrap input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+.btn {
+  border: none; border-radius: 12px; font-size: 1rem; font-weight: 700;
+  padding: 13px 22px; cursor: pointer; font-family: inherit; transition: transform 0.1s, background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-dark); }
+.btn-ghost { background: transparent; color: var(--accent); border: 2px solid var(--accent); padding: 11px 20px; }
+.btn-ghost:hover { background: var(--accent-soft); }
+
+.bid-hint { color: var(--red); font-size: 0.85rem; min-height: 1.2em; margin: 10px 0 0; }
+
+/* ---------- Reveal ---------- */
+.reveal-tier { font-size: 1.5rem; font-weight: 800; margin-bottom: 4px; }
+.t-green { color: var(--green); }
+.t-yellow { color: #b98a00; }
+.t-orange { color: var(--orange); }
+.t-red { color: var(--red); }
+.reveal-price { font-size: 2.6rem; font-weight: 800; letter-spacing: -0.03em; margin: 2px 0 6px; }
+.reveal-line { color: var(--muted); font-size: 0.95rem; }
+.reveal-label { margin-top: 2px; font-weight: 700; }
+.reveal-score { color: var(--muted); margin: 6px 0 16px; font-size: 1.05rem; }
+
+/* ---------- Results ---------- */
+.results-title { margin: 0 0 4px; font-size: 1.4rem; }
+.results-score { font-size: 2.2rem; font-weight: 800; color: var(--accent); margin-bottom: 14px; letter-spacing: -0.02em; }
+.results-list { list-style: none; padding: 0; margin: 0 0 18px; text-align: left; }
+.results-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 10px; margin-bottom: 6px;
+  background: var(--bg); border: 1px solid var(--line); font-size: 0.92rem;
+}
+.rl-emoji { font-size: 1rem; flex-shrink: 0; }
+.rl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rl-pts { font-weight: 800; flex-shrink: 0; color: var(--muted); }
+
+.results-card .btn-primary { width: 100%; }
+.share-hint { color: var(--green); font-size: 0.9rem; min-height: 1.3em; margin: 8px 0; white-space: pre-line; }
+.results-card .btn-ghost { width: 100%; margin-top: 8px; }
+.countdown { margin-top: 16px; color: var(--muted); font-size: 0.95rem; }
+
+/* ---------- Content sections ---------- */
+.section { padding: 34px 16px 10px; }
+.section h2 { font-size: 1.45rem; letter-spacing: -0.02em; margin: 0 0 14px; }
+
+.howto { padding-left: 20px; margin: 0 0 12px; }
+.howto li { margin-bottom: 10px; }
+.howto-note { color: var(--muted); font-size: 0.95rem; }
+
+details {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 16px; margin-bottom: 8px;
+}
+summary { font-weight: 700; cursor: pointer; }
+details p { margin: 10px 0 2px; color: var(--muted); }
+
+/* ---------- Footer ---------- */
+.site-footer {
+  margin-top: 44px; padding: 26px 0 34px;
+  border-top: 1px solid var(--line); color: var(--muted); font-size: 0.88rem;
+  text-align: center;
+}
+.foot-note { font-size: 0.8rem; opacity: 0.8; }
+
+/* ---------- Desktop polish ---------- */
+@media (min-width: 560px) {
+  .card { padding: 30px 34px; }
+  .item-emoji { font-size: 4.2rem; }
+  .results-card .btn-primary, .results-card .btn-ghost { width: auto; padding: 13px 34px; }
+}
