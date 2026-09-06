@@ -64,6 +64,11 @@
     },
     {
       "@type": "Question",
+      "name": "What is Close Call mode?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Close Call is the second game mode: one mystery item, six guesses. After each guess the game tells you whether the real price is higher or lower and how close you are. Land within 5% of the real price to win. A new Close Call item unlocks every day." }
+    },
+    {
+      "@type": "Question",
       "name": "Is the game free?",
       "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely free, no account or sign-up needed. Everything runs in your browser and your streak is saved on your device." }
     }
@@ -112,7 +117,10 @@
         <div class="unit-title" id="unit-title">Storage Unit #—</div>
         <div class="unit-date" id="unit-date"></div>
       </div>
-      <div class="progress" id="progress" aria-label="Progress"></div>
+      <div class="unit-side">
+        <div class="progress" id="progress" aria-label="Progress"></div>
+        <button id="closer-mode-btn" class="closer-entry" type="button" title="New mode: one item, six guesses">🔍 Close Call</button>
+      </div>
     </div>
 
     <!-- Item card -->
@@ -154,6 +162,34 @@
       <div class="countdown" id="countdown" hidden>
         Next unit in <strong id="countdown-time">--:--:--</strong>
       </div>
+    </article>
+
+    <!-- Close Call mode panel -->
+    <article class="card closer-card" id="closer-card" hidden>
+      <h2 class="closer-title">🔍 Close Call — Lock the Price</h2>
+      <p class="closer-sub">One mystery item. Six guesses. Land within <strong>5%</strong> of the real price.</p>
+      <div class="item-emoji" id="closer-emoji" aria-hidden="true">📦</div>
+      <h3 class="item-name" id="closer-name">Mystery Item</h3>
+      <p class="item-desc" id="closer-desc">Loading…</p>
+      <div class="bid-row" id="closer-input-row">
+        <label class="bid-label" for="closer-input">Your guess</label>
+        <div class="bid-input-wrap">
+          <span class="bid-prefix" aria-hidden="true">$</span>
+          <input id="closer-input" type="number" inputmode="numeric" min="1" max="9999999" step="1" placeholder="250" autocomplete="off" />
+        </div>
+        <button id="closer-guess-btn" class="btn btn-primary" type="button">Guess</button>
+      </div>
+      <p class="bid-hint" id="closer-hint"></p>
+      <ul class="closer-history" id="closer-history" aria-live="polite"></ul>
+      <div id="closer-result" hidden>
+        <div class="reveal-tier" id="closer-result-tier" aria-live="polite"></div>
+        <div class="reveal-price" id="closer-real">$0</div>
+        <div class="reveal-line" id="closer-result-line"></div>
+        <button id="closer-share-btn" class="btn btn-primary" type="button">Share Result 📋</button>
+        <p class="share-hint" id="closer-share-hint" aria-live="polite"></p>
+      </div>
+      <p class="closer-stats-line" id="closer-stats-line"></p>
+      <button id="closer-back-btn" class="btn btn-ghost" type="button">← Back to Today's Unit</button>
     </article>
   </section>
 
@@ -206,6 +242,10 @@
     <details>
       <summary>Is it free? Do I need an account?</summary>
       <p>Completely free, no account, no sign-up, no download. The whole game runs in your browser and works on phones, tablets and desktops.</p>
+    </details>
+    <details>
+      <summary>What is Close Call mode?</summary>
+      <p>Close Call is the second game mode: one mystery item, six guesses. After each guess the game tells you whether the real price is higher or lower and how close you are. Land within 5% of the real price to win. A new Close Call item unlocks every day.</p>
     </details>
     <details>
       <summary>Where do the item prices come from?</summary>

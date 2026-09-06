@@ -318,6 +318,166 @@
     }
   }
 
+  // ---------- Close Call mode (6 iterative guesses, win within 5%) ----------
+  var closerPrefix = "pgg_closer_";
+  var dailyDate = null;
+  var closer = null;
+
+  function closerItemFor(d) {
+    var rng = mulberry32(hashStr("closer-" + dateKey(d)));
+    return ITEMS[Math.floor(rng() * ITEMS.length)];
+  }
+
+  function closerEval(guess, price) {
+    var pct = Math.abs(guess - price) / price * 100;
+    return {
+      pct: pct, win: pct <= 5,
+      cls: pct <= 5 ? "cl-green" : (pct <= 25 ? "cl-yellow" : "cl-red"),
+      arrow: guess < price ? "▲" : (guess > price ? "▼" : "✓")
+    };
+  }
+
+  function startCloser() {
+    var d = new Date();
+    closer = { day: dateKey(d), item: closerItemFor(d), guesses: [], counted: false, done: false, won: false };
+    try {
+      var saved = JSON.parse(localStorage.getItem(closerPrefix + closer.day));
+      if (saved && Array.isArray(saved.guesses)) { closer.guesses = saved.guesses; closer.counted = !!saved.counted; }
+    } catch (e) {}
+    for (var i = 0; i < closer.guesses.length; i++) {
+      if (closerEval(closer.guesses[i], closer.item.p).win) { closer.done = true; closer.won = true; }
+    }
+    if (closer.guesses.length >= 6) closer.done = true;
+
+    el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true; el.countdown.hidden = true;
+    el.closerEmoji.textContent = closer.item.e;
+    el.closerName.textContent = closer.item.n;
+    el.closerDesc.textContent = closer.item.d + " (" + closer.item.c + ")";
+    el.closerInput.value = "";
+    el.closerHint.textContent = "";
+    el.closerShareHint.textContent = "";
+    el.closerResult.hidden = true;
+    el.closerCard.hidden = false;
+    renderCloser();
+    if (!closer.done) setTimeout(function () { el.closerInput.focus(); }, 60);
+  }
+
+  function renderCloser() {
+    el.closerHistory.innerHTML = "";
+    for (var i = 0; i < closer.guesses.length; i++) {
+      var g = closer.guesses[i];
+      var r = closerEval(g, closer.item.p);
+      var li = document.createElement("li");
+      li.className = r.cls;
+      li.innerHTML = '<span class="cl-guess"></span><span class="cl-arrow"></span><span class="cl-off"></span>';
+      li.querySelector(".cl-guess").textContent = fmtMoney(g);
+      li.querySelector(".cl-arrow").textContent = r.win ? "✓" : r.arrow;
+      li.querySelector(".cl-off").textContent = r.win ? "within 5%" : Math.round(r.pct) + "% off";
+      el.closerHistory.appendChild(li);
+    }
+    var s = statsLoad();
+    var c = s.closer;
+    el.closerStatsLine.textContent = c && c.played
+      ? "🔥 Streak " + (c.streak || 0) + " · " + c.wins + "/" + c.played + " won" + (c.best ? " · Best: " + c.best + " guess" + (c.best === 1 ? "" : "es") : "")
+      : "";
+    el.closerInputRow.hidden = closer.done;
+    if (closer.done) {
+      el.closerHint.textContent = "";
+      var used = closer.guesses.length;
+      el.closerResult.hidden = false;
+      if (closer.won) {
+        el.closerResultTier.textContent = "🔒 Locked it in " + used + " guess" + (used === 1 ? "" : "es") + "!";
+        el.closerResultTier.className = "reveal-tier t-green";
+      } else {
+        el.closerResultTier.textContent = "💸 Out of guesses!";
+        el.closerResultTier.className = "reveal-tier t-red";
+      }
+      el.closerReal.textContent = fmtMoney(closer.item.p);
+      var best = null, bestPct = Infinity;
+      for (var j = 0; j < closer.guesses.length; j++) {
+        var pct = Math.abs(closer.guesses[j] - closer.item.p) / closer.item.p * 100;
+        if (pct < bestPct) { bestPct = pct; best = closer.guesses[j]; }
+      }
+      el.closerResultLine.innerHTML = "Real price — your closest guess was <strong></strong>";
+      el.closerResultLine.querySelector("strong").textContent = fmtMoney(best) + " (" + Math.round(bestPct) + "% off)";
+    }
+  }
+
+  function closerGuess() {
+    if (!closer || closer.done) return;
+    var raw = el.closerInput.value.trim();
+    if (!/^\d{1,7}$/.test(raw)) {
+      el.closerHint.textContent = "Enter a whole dollar amount, e.g. 250.";
+      el.closerInput.focus();
+      return;
+    }
+    var guess = parseInt(raw, 10);
+    closer.guesses.push(guess);
+    el.closerInput.value = "";
+    el.closerHint.textContent = "";
+    var r = closerEval(guess, closer.item.p);
+    if (r.win) { closer.done = true; closer.won = true; }
+    else if (closer.guesses.length >= 6) { closer.done = true; }
+    persistCloser();
+    renderCloser();
+    if (closer.done) {
+      finishCloser();
+    } else {
+      el.closerHint.textContent = r.arrow === "▲" ? "Real price is HIGHER ▲" : "Real price is LOWER ▼";
+      el.closerInput.focus();
+    }
+  }
+
+  function persistCloser() {
+    try { localStorage.setItem(closerPrefix + closer.day, JSON.stringify({ guesses: closer.guesses, counted: closer.counted })); } catch (e) {}
+  }
+
+  function finishCloser() {
+    if (!closer.counted) {
+      closer.counted = true;
+      persistCloser();
+      updateCloserStats();
+    }
+    renderCloser();
+  }
+
+  function updateCloserStats() {
+    var s = statsLoad();
+    var c = s.closer = s.closer || { played: 0, wins: 0, streak: 0, maxStreak: 0, best: null };
+    c.played++;
+    if (closer.won) {
+      c.wins++;
+      var used = closer.guesses.length;
+      if (!c.best || used < c.best) c.best = used;
+      var y = new Date(); y.setDate(y.getDate() - 1);
+      c.streak = (s.lastCloser === dateKey(y)) ? (c.streak || 0) + 1 : 1;
+      if ((c.streak || 0) > (c.maxStreak || 0)) c.maxStreak = c.streak;
+    } else {
+      c.streak = 0;
+    }
+    s.lastCloser = closer.day;
+    statsSave(s);
+  }
+
+  function closerShare() {
+    var rows = "";
+    for (var i = 0; i < closer.guesses.length; i++) {
+      var r = closerEval(closer.guesses[i], closer.item.p);
+      rows += r.win ? "✅" : (r.cls === "cl-yellow" ? "🟨" : "🟥");
+    }
+    var head = "🏷️ Price Guessing Game — Close Call #" + Math.max(1, puzzleNum(new Date()));
+    var res = closer.won
+      ? "Locked in " + closer.guesses.length + "/6 guesses"
+      : "0/6 — the price got away";
+    var txt = head + "\n" + rows + "  " + res + "\nCan you lock the price?\nhttps://priceguessinggame.com";
+    copyText(txt, el.closerShareHint);
+  }
+
+  function exitCloser() {
+    el.closerCard.hidden = true;
+    startUnit(dailyDate, "daily");
+  }
+
   // ---------- State ----------
   var mode = "daily";           // "daily" | "bonus"
   var date = null;              // puzzle date
@@ -346,7 +506,14 @@
     bonusBtn: $("bonus-btn"), countdown: $("countdown"), countdownTime: $("countdown-time"),
     statsBar: $("stats"), statStreak: $("stat-streak"), statPlayed: $("stat-played"), statBest: $("stat-best"),
     rankLine: $("rank-line"), nameChip: $("name-chip"),
-    lbWrap: $("lb-wrap"), lbStats: $("lb-stats"), lbToday: $("lb-today"), lbAlltime: $("lb-alltime")
+    lbWrap: $("lb-wrap"), lbStats: $("lb-stats"), lbToday: $("lb-today"), lbAlltime: $("lb-alltime"),
+    closerModeBtn: $("closer-mode-btn"),
+    closerCard: $("closer-card"), closerEmoji: $("closer-emoji"), closerName: $("closer-name"),
+    closerDesc: $("closer-desc"), closerInputRow: $("closer-input-row"), closerInput: $("closer-input"),
+    closerGuessBtn: $("closer-guess-btn"), closerHint: $("closer-hint"), closerHistory: $("closer-history"),
+    closerResult: $("closer-result"), closerResultTier: $("closer-result-tier"), closerReal: $("closer-real"),
+    closerResultLine: $("closer-result-line"), closerShareBtn: $("closer-share-btn"),
+    closerShareHint: $("closer-share-hint"), closerStatsLine: $("closer-stats-line"), closerBackBtn: $("closer-back-btn")
   };
 
   // ---------- Progress dots ----------
@@ -452,18 +619,21 @@
   }
 
   function share() {
-    var txt = shareText();
-    function done() { el.shareHint.textContent = "Copied! Paste it anywhere — no spoilers included."; }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(txt).then(done, fallback);
-    } else { fallback(); }
+    copyText(shareText(), el.shareHint);
+  }
+
+  function copyText(txt, hintEl) {
+    function done() { hintEl.textContent = "Copied! Paste it anywhere — no spoilers included."; }
     function fallback() {
       var ta = document.createElement("textarea");
       ta.value = txt; document.body.appendChild(ta); ta.select();
       try { document.execCommand("copy"); done(); }
-      catch (e) { el.shareHint.textContent = "Copy failed — select the text below:\n" + txt; }
+      catch (e) { hintEl.textContent = "Copy failed — select the text below:\n" + txt; }
       document.body.removeChild(ta);
     }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, fallback);
+    } else { fallback(); }
   }
 
   // ---------- Daily persistence & streak ----------
@@ -524,6 +694,8 @@
       : "Bonus Unit ♻️";
     el.unitDate.textContent = fmtDate(d) + (m === "daily" && num >= 1 ? "" : " — unlimited practice");
     el.bonusBtn.hidden = (m === "bonus");
+    el.closerModeBtn.hidden = (m === "bonus");
+    el.closerCard.hidden = true;
     el.shareHint.textContent = "";
     el.rankLine.hidden = true;
 
@@ -557,6 +729,7 @@
         d = arch;
       }
     }
+    dailyDate = d;
 
     el.bidBtn.addEventListener("click", submitBid);
     el.bidInput.addEventListener("keydown", function (e) {
@@ -567,6 +740,15 @@
     el.bonusBtn.addEventListener("click", function () {
       startUnit(new Date(), "bonus");
     });
+
+    // Close Call mode
+    el.closerModeBtn.addEventListener("click", startCloser);
+    el.closerGuessBtn.addEventListener("click", closerGuess);
+    el.closerInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); closerGuess(); }
+    });
+    el.closerBackBtn.addEventListener("click", exitCloser);
+    el.closerShareBtn.addEventListener("click", closerShare);
 
     function refreshNameChip() {
       if (auth.user && auth.user.name) {
