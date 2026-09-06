@@ -122,6 +122,27 @@ body {
 .cl-yellow { background: #fff3bf; color: #e67700; }
 .cl-red { background: #ffe3e3; color: #c92a2a; }
 .closer-stats-line { font-size: 0.85rem; color: var(--muted); margin: 14px 0 0; }
+.mode-btns { display: flex; gap: 6px; }
+
+/* Close Call guess distribution (Wordle-style bars) */
+.closer-dist { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-width: 340px; margin-left: auto; margin-right: auto; }
+.closer-dist .cd-title { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.closer-dist li { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.cd-label { font-weight: 800; min-width: 14px; text-align: right; color: var(--ink); }
+.cd-bar-wrap { flex: 1; background: var(--line); border-radius: 4px; overflow: hidden; }
+.cd-bar { display: block; height: 16px; background: var(--green); border-radius: 4px; }
+.cd-count { min-width: 22px; font-weight: 700; color: var(--ink); }
+
+/* Battle Royale */
+.br-round-line { font-size: 0.95rem; font-weight: 800; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; padding: 6px 14px; display: inline-block; margin: 0 0 12px; }
+.br-prog { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 700; }
+.br-result { margin: 10px 0 0; }
+.br-board-wrap { margin-top: 16px; }
+.br-board-title { font-size: 0.85rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px; }
+.br-board li { justify-content: flex-start; text-align: left; background: var(--bg); border: 1px solid var(--line); }
+.br-board .lb-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-board .lb-meta { font-size: 0.75rem; }
+.br-board .lb-pts { font-size: 0.9rem; }
 
 .card {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);

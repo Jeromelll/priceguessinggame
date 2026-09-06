@@ -338,6 +338,8 @@
   }
 
   function startCloser() {
+    brStopTimers();
+    el.brCard.hidden = true;
     var d = new Date();
     closer = { day: dateKey(d), item: closerItemFor(d), guesses: [], counted: false, done: false, won: false };
     try {
@@ -380,6 +382,7 @@
     el.closerStatsLine.textContent = c && c.played
       ? "🔥 Streak " + (c.streak || 0) + " · " + c.wins + "/" + c.played + " won" + (c.best ? " · Best: " + c.best + " guess" + (c.best === 1 ? "" : "es") : "")
       : "";
+    renderCloserDist(c);
     el.closerInputRow.hidden = closer.done;
     if (closer.done) {
       el.closerHint.textContent = "";
@@ -443,11 +446,13 @@
 
   function updateCloserStats() {
     var s = statsLoad();
-    var c = s.closer = s.closer || { played: 0, wins: 0, streak: 0, maxStreak: 0, best: null };
+    var c = s.closer = s.closer || { played: 0, wins: 0, streak: 0, maxStreak: 0, best: null, dist: [0, 0, 0, 0, 0, 0] };
+    if (!c.dist) c.dist = [0, 0, 0, 0, 0, 0];
     c.played++;
     if (closer.won) {
       c.wins++;
       var used = closer.guesses.length;
+      c.dist[used - 1]++;
       if (!c.best || used < c.best) c.best = used;
       var y = new Date(); y.setDate(y.getDate() - 1);
       c.streak = (s.lastCloser === dateKey(y)) ? (c.streak || 0) + 1 : 1;
@@ -457,6 +462,29 @@
     }
     s.lastCloser = closer.day;
     statsSave(s);
+  }
+
+  function renderCloserDist(c) {
+    var ul = el.closerDist;
+    if (!ul) return;
+    if (!c || !c.played) { ul.hidden = true; return; }
+    var dist = c.dist || [0, 0, 0, 0, 0, 0];
+    var max = 1;
+    for (var i = 0; i < 6; i++) if (dist[i] > max) max = dist[i];
+    ul.innerHTML = "";
+    ul.hidden = false;
+    var title = document.createElement("li");
+    title.className = "cd-title";
+    title.textContent = "Guess distribution (wins)";
+    ul.appendChild(title);
+    for (var j = 0; j < 6; j++) {
+      var li = document.createElement("li");
+      li.innerHTML = '<span class="cd-label"></span><span class="cd-bar-wrap"><span class="cd-bar"></span></span><span class="cd-count"></span>';
+      li.querySelector(".cd-label").textContent = j + 1;
+      li.querySelector(".cd-bar").style.width = Math.max(8, Math.round(dist[j] / max * 100)) + "%";
+      li.querySelector(".cd-count").textContent = dist[j];
+      ul.appendChild(li);
+    }
   }
 
   function closerShare() {
@@ -475,6 +503,170 @@
 
   function exitCloser() {
     el.closerCard.hidden = true;
+    startUnit(dailyDate, "daily");
+  }
+
+  // ---------- Battle Royale mode (live 10-minute rounds) ----------
+  var BR_ROUND_MS = 600000;
+  var br = null;            // {round, unit, idx, done, timer, clockTimer}
+  var brPollTimer = null;
+
+  function brStopTimers() {
+    if (brPollTimer) { clearInterval(brPollTimer); brPollTimer = null; }
+  }
+
+  function brPad(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function startBr() {
+    el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true;
+    el.countdown.hidden = true; el.closerCard.hidden = true;
+    el.brCard.hidden = false;
+    el.brInputRow.hidden = true; el.brResult.hidden = true;
+    el.brHint.textContent = ""; el.brName.textContent = "Loading…"; el.brEmoji.textContent = "⏳";
+    brStopTimers();
+    fetch(apiBase() + "/api/br/state?pid=" + encodeURIComponent(effectivePid()), fetchOpts())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok) { el.brRoundLine.textContent = "Battle Royale is unavailable right now."; return; }
+        br = { round: d.round, idx: d.me ? d.me.idx : 0, done: d.me ? d.me.idx >= 5 : false };
+        br.unit = buildUnit("br-" + br.round);
+        el.brRoundLine.textContent = "Round ends in --:--";
+        renderBrItem();
+        brRefreshBoard();
+        brPollTimer = setInterval(function () { brRefreshBoard(); }, 3000);
+      })
+      .catch(function () { el.brRoundLine.textContent = "Battle Royale is unavailable right now."; });
+  }
+
+  function renderBrItem() {
+    el.brRoundLine.textContent = "Round ends in --:--";
+    if (br.idx >= 5) {
+      brShowFinished();
+      return;
+    }
+    var it = br.unit[br.idx];
+    el.brEmoji.textContent = it.e;
+    el.brName.textContent = it.n;
+    el.brDesc.textContent = it.d + " (" + it.c + ")";
+    el.brProg.textContent = "· item " + (br.idx + 1) + "/5";
+    el.brInputRow.hidden = false;
+    el.brInput.value = "";
+    setTimeout(function () { el.brInput.focus(); }, 60);
+  }
+
+  function brGuess() {
+    if (!br || br.idx >= 5) return;
+    var raw = el.brInput.value.trim();
+    if (!/^\d{1,7}$/.test(raw)) {
+      el.brHint.textContent = "Enter a whole dollar amount, e.g. 250.";
+      el.brInput.focus();
+      return;
+    }
+    var guess = parseInt(raw, 10);
+    el.brGuessBtn.disabled = true;
+    fetch(apiBase() + "/api/br/guess", fetchOpts({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ round: br.round, idx: br.idx, guess: guess, pid: pidGet(), name: nameGet() })
+    }))
+      .then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+      .then(function (res) {
+        el.brGuessBtn.disabled = false;
+        var d = res.d;
+        if (!d || !d.ok) {
+          if (res.status === 409 && typeof d.serverIdx === "number") {
+            br.idx = d.serverIdx; // resume from server truth
+            renderBrItem();
+            return;
+          }
+          if (d && d.error === "round closed") { startBr(); return; } // round rolled over → jump into the new one
+          el.brHint.textContent = "Something went wrong — try again.";
+          return;
+        }
+        var r = closerEval(guess, br.unit[br.idx].p);
+        el.brHint.textContent = r.win ? "✅ Within 5% — great bid!" : (r.cls === "cl-yellow" ? "🟨 " + Math.round(r.pct) + "% off" : "🟥 " + Math.round(r.pct) + "% off");
+        br.idx = d.idx;
+        brRefreshFromPayload(d);
+        if (br.idx >= 5) brShowFinished(d);
+        else renderBrItem();
+        renderBrBoard(d.leaders, d.players);
+      })
+      .catch(function () {
+        el.brGuessBtn.disabled = false;
+        el.brHint.textContent = "Network hiccup — try again.";
+      });
+  }
+
+  function brShowFinished(d) {
+    el.brInputRow.hidden = true;
+    el.brResult.hidden = false;
+    if (d) {
+      el.brResultTier.textContent = "🏁 Unit posted: " + d.total + "/500 — rank #" + d.rank + " of " + d.players;
+      el.brResultTier.className = "reveal-tier " + (d.total >= 350 ? "t-green" : d.total >= 250 ? "t-yellow" : "t-red");
+      el.brResultLine.textContent = "Stick around — the live board keeps updating until the round ends.";
+    }
+  }
+
+  function brRefreshFromPayload(d) {
+    el.brRoundLine.dataset.end = String(d.roundEnd);
+  }
+
+  function renderBrBoard(leaders, players) {
+    var me = effectivePid();
+    var ol = el.brBoard;
+    ol.innerHTML = "";
+    if (!leaders || !leaders.length) {
+      var li = document.createElement("li");
+      li.className = "lb-empty";
+      li.textContent = "No bids yet this round — be first!";
+      ol.appendChild(li);
+      return;
+    }
+    for (var i = 0; i < leaders.length; i++) {
+      var row = leaders[i];
+      var li2 = document.createElement("li");
+      var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "#" + (i + 1);
+      var isMe = row.player_id === me;
+      if (isMe) li2.className = "lb-me";
+      li2.innerHTML = '<span class="lb-rank"></span><span class="lb-name"></span><span class="lb-meta"></span><span class="lb-pts"></span>';
+      li2.querySelector(".lb-rank").textContent = medal;
+      li2.querySelector(".lb-name").textContent = (row.name || "Anonymous") + (isMe ? " (you)" : "") + (row.alive ? " 🔴" : "");
+      li2.querySelector(".lb-meta").textContent = row.idx + "/5";
+      li2.querySelector(".lb-pts").textContent = row.total + " pts";
+      ol.appendChild(li2);
+    }
+  }
+
+  function brRefreshBoard() {
+    if (!br) return;
+    // local countdown tick
+    var endEl = el.brRoundLine;
+    fetch(apiBase() + "/api/br/state?round=" + br.round + "&pid=" + encodeURIComponent(effectivePid()), fetchOpts())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        if (d.round !== br.round) { startBr(); return; } // round rolled over mid-play
+        el.brRoundLine.dataset.end = String(d.roundEnd);
+        renderBrBoard(d.leaders, d.players);
+        if (d.me && d.me.idx >= 5 && br.idx < 5) { br.idx = 5; brShowFinished(); }
+      })
+      .catch(function () {});
+  }
+
+  // countdown display tick (1s, purely visual)
+  setInterval(function () {
+    if (el.brCard.hidden) return;
+    var end = parseInt(el.brRoundLine.dataset.end || "0", 10);
+    if (!end) return;
+    var ms = end - Date.now();
+    if (ms <= 0) { el.brRoundLine.textContent = "Round over — starting next round…"; return; }
+    var m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60;
+    el.brRoundLine.textContent = "⏱ Round ends in " + m + ":" + brPad(s);
+  }, 1000);
+
+  function exitBr() {
+    brStopTimers();
+    el.brCard.hidden = true;
     startUnit(dailyDate, "daily");
   }
 
@@ -513,7 +705,13 @@
     closerGuessBtn: $("closer-guess-btn"), closerHint: $("closer-hint"), closerHistory: $("closer-history"),
     closerResult: $("closer-result"), closerResultTier: $("closer-result-tier"), closerReal: $("closer-real"),
     closerResultLine: $("closer-result-line"), closerShareBtn: $("closer-share-btn"),
-    closerShareHint: $("closer-share-hint"), closerStatsLine: $("closer-stats-line"), closerBackBtn: $("closer-back-btn")
+    closerShareHint: $("closer-share-hint"), closerStatsLine: $("closer-stats-line"), closerBackBtn: $("closer-back-btn"),
+    closerDist: $("closer-dist"), brModeBtn: $("br-mode-btn"),
+    brCard: $("br-card"), brRoundLine: $("br-round-line"), brEmoji: $("br-emoji"), brName: $("br-name"),
+    brDesc: $("br-desc"), brInputRow: $("br-input-row"), brProg: $("br-prog"), brInput: $("br-input"),
+    brGuessBtn: $("br-guess-btn"), brHint: $("br-hint"), brResult: $("br-result"),
+    brResultTier: $("br-result-tier"), brResultLine: $("br-result-line"),
+    brBoard: $("br-board"), brBackBtn: $("br-back-btn")
   };
 
   // ---------- Progress dots ----------
@@ -695,7 +893,10 @@
     el.unitDate.textContent = fmtDate(d) + (m === "daily" && num >= 1 ? "" : " — unlimited practice");
     el.bonusBtn.hidden = (m === "bonus");
     el.closerModeBtn.hidden = (m === "bonus");
+    el.brModeBtn.hidden = (m === "bonus");
     el.closerCard.hidden = true;
+    if (typeof brStopTimers === "function") brStopTimers();
+    el.brCard.hidden = true;
     el.shareHint.textContent = "";
     el.rankLine.hidden = true;
 
@@ -749,6 +950,14 @@
     });
     el.closerBackBtn.addEventListener("click", exitCloser);
     el.closerShareBtn.addEventListener("click", closerShare);
+
+    // Battle Royale mode
+    el.brModeBtn.addEventListener("click", startBr);
+    el.brGuessBtn.addEventListener("click", brGuess);
+    el.brInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); brGuess(); }
+    });
+    el.brBackBtn.addEventListener("click", exitBr);
 
     function refreshNameChip() {
       if (auth.user && auth.user.name) {

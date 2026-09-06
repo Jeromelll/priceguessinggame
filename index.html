@@ -69,6 +69,11 @@
     },
     {
       "@type": "Question",
+      "name": "What is Battle Royale mode?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Battle Royale is the live multiplayer mode: continuous 10-minute rounds where every player bids on the same 5 mystery items and the scoreboard updates in real time. Finish all 5 items before the round ends to post your total." }
+    },
+    {
+      "@type": "Question",
       "name": "Is the game free?",
       "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely free, no account or sign-up needed. Everything runs in your browser and your streak is saved on your device." }
     }
@@ -119,7 +124,10 @@
       </div>
       <div class="unit-side">
         <div class="progress" id="progress" aria-label="Progress"></div>
-        <button id="closer-mode-btn" class="closer-entry" type="button" title="New mode: one item, six guesses">🔍 Close Call</button>
+        <div class="mode-btns">
+          <button id="closer-mode-btn" class="closer-entry" type="button" title="New mode: one item, six guesses">🔍 Close Call</button>
+          <button id="br-mode-btn" class="closer-entry" type="button" title="Live 10-minute rounds against the world">⚔️ Battle Royale</button>
+        </div>
       </div>
     </div>
 
@@ -189,7 +197,36 @@
         <p class="share-hint" id="closer-share-hint" aria-live="polite"></p>
       </div>
       <p class="closer-stats-line" id="closer-stats-line"></p>
+      <ul class="closer-dist" id="closer-dist" hidden></ul>
       <button id="closer-back-btn" class="btn btn-ghost" type="button">← Back to Today's Unit</button>
+    </article>
+
+    <!-- Battle Royale mode panel -->
+    <article class="card closer-card" id="br-card" hidden>
+      <h2 class="closer-title">⚔️ Battle Royale</h2>
+      <p class="closer-sub">Live 10-minute rounds. Everyone bids on the <strong>same 5 items</strong> — the board updates in real time.</p>
+      <p class="br-round-line" id="br-round-line">Loading round…</p>
+      <div class="item-emoji" id="br-emoji" aria-hidden="true">📦</div>
+      <h3 class="item-name" id="br-name">Mystery Item</h3>
+      <p class="item-desc" id="br-desc">Loading…</p>
+      <div class="bid-row" id="br-input-row">
+        <label class="bid-label" for="br-input">Your bid <span class="br-prog" id="br-prog"></span></label>
+        <div class="bid-input-wrap">
+          <span class="bid-prefix" aria-hidden="true">$</span>
+          <input id="br-input" type="number" inputmode="numeric" min="1" max="9999999" step="1" placeholder="250" autocomplete="off" />
+        </div>
+        <button id="br-guess-btn" class="btn btn-primary" type="button">Place Bid</button>
+      </div>
+      <p class="bid-hint" id="br-hint"></p>
+      <div class="br-result" id="br-result" hidden>
+        <div class="reveal-tier" id="br-result-tier" aria-live="polite"></div>
+        <div class="reveal-line" id="br-result-line"></div>
+      </div>
+      <div class="br-board-wrap">
+        <h3 class="br-board-title">🔴 Live Board</h3>
+        <ol class="closer-history br-board" id="br-board"></ol>
+      </div>
+      <button id="br-back-btn" class="btn btn-ghost" type="button">← Back to Today's Unit</button>
     </article>
   </section>
 
@@ -246,6 +283,10 @@
     <details>
       <summary>What is Close Call mode?</summary>
       <p>Close Call is the second game mode: one mystery item, six guesses. After each guess the game tells you whether the real price is higher or lower and how close you are. Land within 5% of the real price to win. A new Close Call item unlocks every day.</p>
+    </details>
+    <details>
+      <summary>What is Battle Royale mode?</summary>
+      <p>Battle Royale is the live multiplayer mode: continuous 10-minute rounds where every player bids on the same 5 mystery items and the scoreboard updates in real time. Finish all 5 items before the round ends to post your total.</p>
     </details>
     <details>
       <summary>Where do the item prices come from?</summary>

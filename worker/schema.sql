@@ -26,3 +26,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_sub ON sessions(sub);
+
+-- Battle Royale rounds (10-minute rounds, everyone same unit)
+CREATE TABLE IF NOT EXISTS br_scores (
+  round INTEGER NOT NULL,
+  player_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  idx INTEGER NOT NULL DEFAULT 0,        -- items completed (0..5)
+  total INTEGER NOT NULL DEFAULT 0,
+  greens INTEGER NOT NULL DEFAULT 0,
+  guesses TEXT NOT NULL DEFAULT '[]',    -- JSON array of guesses so far
+  updated_at INTEGER NOT NULL,           -- epoch ms, freshness signal
+  PRIMARY KEY (round, player_id)
+);
+CREATE INDEX IF NOT EXISTS idx_br_round_total ON br_scores(round, total DESC);

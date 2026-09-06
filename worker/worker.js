@@ -12,6 +12,10 @@ import { ITEMS } from "./items.mjs";
 const EPOCH = { y: 2026, m: 9, d: 4 }; // puzzle #1
 const ITEMS_PER_UNIT = 5;
 const SESSION_TTL = 30 * 86400; // 30 days
+// Battle Royale: continuous 10-minute rounds, everyone plays the same unit
+const BR_ROUND_MS = 600000;   // 10 min
+const BR_GRACE_MS = 120000;   // submissions accepted 2 min past round end
+const BR_ALIVE_MS = 15000;    // "live" freshness window for the scoreboard
 
 // ---------- deterministic unit builder (must mirror app.js exactly) ----------
 function mulberry32(a) {
@@ -325,6 +329,129 @@ async function handleLeaderboard(request, env, url) {
   });
 }
 
+// ---------- Battle Royale ----------
+function brCurrentRound() { return Math.floor(Date.now() / BR_ROUND_MS); }
+function brRoundStart(round) { return round * BR_ROUND_MS; }
+function validRound(round) {
+  if (!Number.isInteger(round)) return false;
+  const cur = brCurrentRound();
+  return round <= cur && round >= cur - 1; // current + 2-min grace for the previous
+}
+function brLeaderRow(r, now) {
+  return {
+    player_id: r.player_id, name: r.name, idx: r.idx, total: r.total,
+    alive: now - r.updated_at < BR_ALIVE_MS,
+  };
+}
+
+// POST /api/br/guess — one item at a time, sequential, server-scored
+async function handleBrGuess(request, env) {
+  const body = await readBody(request);
+  if (!body) return json({ ok: false, error: "bad json" }, 400);
+  const round = body.round;
+  const idx = body.idx;
+  const guess = body.guess;
+  if (!validRound(round)) return json({ ok: false, error: "round closed" }, 400);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= ITEMS_PER_UNIT) return json({ ok: false, error: "bad idx" }, 400);
+  if (!Number.isInteger(guess) || guess < 1 || guess > 9999999) return json({ ok: false, error: "bad guess" }, 400);
+
+  const user = await sessionUser(request, env);
+  let pid, name;
+  if (user) {
+    pid = "g-" + user.sub;
+    name = user.name;
+  } else {
+    pid = String(body.pid || "");
+    name = cleanName(body.name);
+    if (!/^[A-Za-z0-9-]{8,64}$/.test(pid)) return json({ ok: false, error: "bad pid" }, 400);
+  }
+
+  const db = env.DB;
+  const prev = await db.prepare(
+    `SELECT idx, total, greens, guesses FROM br_scores WHERE round = ?1 AND player_id = ?2`
+  ).bind(round, pid).first();
+  if (prev && prev.idx >= ITEMS_PER_UNIT) return json({ ok: false, error: "already finished" }, 400);
+  if (idx !== (prev ? prev.idx : 0)) return json({ ok: false, error: "out of sync", serverIdx: prev ? prev.idx : 0 }, 409);
+
+  const unit = buildUnit("br-" + round);
+  const item = unit[idx];
+  const s = scoreItem(guess, item.p);
+  const diffPct = Math.abs(guess - item.p) / item.p * 100;
+  const total = (prev ? prev.total : 0) + s;
+  const greens = (prev ? prev.greens : 0) + (diffPct <= 10 ? 1 : 0);
+  const guessesArr = prev ? JSON.parse(prev.guesses || "[]") : [];
+  guessesArr.push(guess);
+  const now = Date.now();
+
+  await db.prepare(
+    `INSERT INTO br_scores (round, player_id, name, idx, total, greens, guesses, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+     ON CONFLICT(round, player_id) DO UPDATE SET
+       name = ?3, idx = ?4, total = ?5, greens = ?6, guesses = ?7, updated_at = ?8`
+  ).bind(round, pid, name, idx + 1, total, greens, JSON.stringify(guessesArr), now).run();
+
+  const better = await db.prepare(
+    `SELECT COUNT(*) AS n FROM br_scores WHERE round = ?1 AND total > ?2`
+  ).bind(round, total).first();
+  const players = await db.prepare(
+    `SELECT COUNT(*) AS n FROM br_scores WHERE round = ?1`
+  ).bind(round).first();
+  const top = await db.prepare(
+    `SELECT player_id, name, idx, total, updated_at FROM br_scores
+     WHERE round = ?1 ORDER BY total DESC, updated_at ASC LIMIT 10`
+  ).bind(round).all();
+
+  return json({
+    ok: true,
+    round,
+    idx: idx + 1,
+    itemScore: s,
+    total,
+    greens,
+    rank: (better ? better.n : 0) + 1,
+    players: players ? players.n : 1,
+    roundEnd: brRoundStart(round) + BR_ROUND_MS,
+    leaders: (top.results || []).map(r => brLeaderRow(r, now)),
+  });
+}
+
+// GET /api/br/state?round=&pid=
+async function handleBrState(request, env, url) {
+  let round = parseInt(url.searchParams.get("round") || "", 10);
+  if (!Number.isInteger(round)) round = brCurrentRound();
+  if (!validRound(round)) return json({ ok: false, error: "bad round" }, 400);
+  const pid = url.searchParams.get("pid") || null;
+  const now = Date.now();
+  const db = env.DB;
+
+  const top = await db.prepare(
+    `SELECT player_id, name, idx, total, updated_at FROM br_scores
+     WHERE round = ?1 ORDER BY total DESC, updated_at ASC LIMIT 20`
+  ).bind(round).all();
+  const players = await db.prepare(
+    `SELECT COUNT(*) AS n FROM br_scores WHERE round = ?1`
+  ).bind(round).first();
+  let me = null;
+  if (pid) {
+    const row = await db.prepare(
+      `SELECT idx, total FROM br_scores WHERE round = ?1 AND player_id = ?2`
+    ).bind(round, pid).first();
+    if (row) me = { idx: row.idx, total: row.total };
+  }
+
+  return json({
+    ok: true,
+    round,
+    now,
+    roundStart: brRoundStart(round),
+    roundEnd: brRoundStart(round) + BR_ROUND_MS,
+    finished: now > brRoundStart(round) + BR_ROUND_MS,
+    players: players ? players.n : 0,
+    me,
+    leaders: (top.results || []).map(r => brLeaderRow(r, now)),
+  });
+}
+
 // ---------- fetch handler ----------
 export default {
   async fetch(request, env, ctx) {
@@ -368,6 +495,15 @@ export default {
 
     if (path === "/api/leaderboard" && request.method === "GET") {
       try { return withCors(request, await handleLeaderboard(request, env, url)); }
+      catch (e) { return json({ ok: false, error: "server error" }, 500); }
+    }
+
+    if (path === "/api/br/guess" && request.method === "POST") {
+      try { return withCors(request, await handleBrGuess(request, env)); }
+      catch (e) { return json({ ok: false, error: "server error" }, 500); }
+    }
+    if (path === "/api/br/state" && request.method === "GET") {
+      try { return withCors(request, await handleBrState(request, env, url)); }
       catch (e) { return json({ ok: false, error: "server error" }, 500); }
     }
 
