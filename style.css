@@ -49,6 +49,18 @@ body {
 .brand span { color: var(--accent); }
 .site-nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; margin-left: 16px; }
 .site-nav a:hover { color: var(--accent); }
+.auth-area { display: flex; align-items: center; gap: 10px; margin-left: 18px; min-height: 32px; }
+.user-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 600; color: var(--ink); }
+.user-pic { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--accent-soft, #ffd8a8); }
+.logout-btn {
+  border: 1px solid var(--muted); background: none; color: var(--muted);
+  font-size: 0.75rem; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+}
+.logout-btn:hover { color: var(--accent); border-color: var(--accent); }
+@media (max-width: 640px) {
+  .site-nav a:first-child { display: none; }
+  .auth-area { margin-left: 10px; }
+}
 
 /* ---------- Hero ---------- */
 .hero { text-align: center; padding: 28px 16px 8px; }

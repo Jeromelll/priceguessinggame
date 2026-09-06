@@ -11,8 +11,11 @@
   var ITEMS_PER_UNIT = 5;
   var STORAGE_STATS = "pgg_stats_v1";
   var STORAGE_PID = "pgg_pid_v1";
+  var STORAGE_ANON_PID = "pgg_anon_pid_v1";
   var STORAGE_NAME = "pgg_name_v1";
   var dailyPrefix = "pgg_daily_";
+  // Google sign-in state (session cookie is authoritative; this mirrors it for UI)
+  var auth = { ready: false, user: null, clientId: null };
 
   // ---------- Utils ----------
   function $(id) { return document.getElementById(id); }
@@ -121,6 +124,108 @@
     return location.hostname.indexOf("pages.dev") >= 0 ? "https://priceguessinggame.com" : "";
   }
 
+  // effective leaderboard identity: Google session maps to "g-"+sub server-side
+  function effectivePid() {
+    return auth.user && auth.user.sub ? "g-" + auth.user.sub : pidGet();
+  }
+
+  // ---------- Google sign-in ----------
+  function fetchOpts(extra) {
+    var o = { credentials: "include" };
+    for (var k in (extra || {})) o[k] = extra[k];
+    return o;
+  }
+
+  function loadGis(cb) {
+    var s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true; s.defer = true;
+    s.onload = cb;
+    document.head.appendChild(s);
+  }
+
+  function initAuth() {
+    fetch(apiBase() + "/api/auth/config", fetchOpts())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok || !d.clientId) return; // not configured → stay anonymous
+        auth.clientId = d.clientId;
+        auth.ready = true;
+        return fetch(apiBase() + "/api/auth/me", fetchOpts())
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (u) {
+            if (u && u.ok) { auth.user = u; updateUserChip(); refreshNameChip(); }
+          });
+      })
+      .then(function () {
+        if (!auth.clientId) return;
+        loadGis(function () {
+          if (!window.google || !google.accounts || !google.accounts.id) return;
+          google.accounts.id.initialize({ client_id: auth.clientId, callback: onGoogleCredential });
+          renderGButton();
+        });
+      })
+      .catch(function () {});
+  }
+
+  function renderGButton() {
+    var box = $("gbtn");
+    if (!box || !auth.ready || !window.google || !google.accounts || !google.accounts.id) return;
+    if (!auth.user && box.childElementCount === 0) {
+      google.accounts.id.renderButton(box, { theme: "outline", size: "medium", text: "signin", shape: "pill" });
+    }
+    box.hidden = !!auth.user;
+  }
+
+  function updateUserChip() {
+    var chip = $("user-chip"), img = $("user-pic"), nm = $("user-name"), out = $("logout-btn");
+    if (!chip) return;
+    if (auth.user) {
+      nm.textContent = auth.user.name || "Signed in";
+      if (auth.user.picture) { img.src = auth.user.picture; img.hidden = false; }
+      chip.hidden = false;
+      out.hidden = false;
+    } else {
+      chip.hidden = true;
+      out.hidden = true;
+    }
+    renderGButton();
+  }
+
+  function onGoogleCredential(resp) {
+    if (!resp || !resp.credential) return;
+    fetch(apiBase() + "/api/auth/google", fetchOpts({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ credential: resp.credential, anonPid: pidGet() })
+    }))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok) return;
+        try { localStorage.setItem(STORAGE_ANON_PID, pidGet()); } catch (e) {}
+        auth.user = { sub: d.sub, name: d.name, picture: d.picture };
+        updateUserChip();
+        refreshNameChip();
+        loadLeaderboard();
+      })
+      .catch(function () {});
+  }
+
+  function signOut() {
+    fetch(apiBase() + "/api/auth/logout", fetchOpts({ method: "POST" }))
+      .catch(function () {})
+      .then(function () {
+        auth.user = null;
+        try {
+          var anon = localStorage.getItem(STORAGE_ANON_PID);
+          if (anon) localStorage.setItem(STORAGE_PID, anon);
+        } catch (e) {}
+        updateUserChip();
+        refreshNameChip();
+        loadLeaderboard();
+      });
+  }
+
   function submitScore() {
     if (mode !== "daily" || !date) return;
     var payload = {
@@ -133,11 +238,11 @@
     for (var i = 0; i < results.length; i++) total += results[i].score;
     el.rankLine.hidden = false;
     el.rankLine.textContent = "Syncing your score…";
-    fetch(apiBase() + "/api/score", {
+    fetch(apiBase() + "/api/score", fetchOpts({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
-    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    })).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
       if (!d || !d.ok) { el.rankLine.textContent = ""; el.rankLine.hidden = true; return; }
       var pct = d.players ? Math.round((d.rank - 1) / d.players * 100) : 0;
       var line = "🏆 Rank #" + d.rank + " of " + d.players + " bidder" + (d.players === 1 ? "" : "s") +
@@ -169,7 +274,7 @@
 
   function loadLeaderboard() {
     var day = dateKey(new Date());
-    fetch(apiBase() + "/api/leaderboard?day=" + day)
+    fetch(apiBase() + "/api/leaderboard?day=" + day, fetchOpts())
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || !d.ok) { el.lbWrap.hidden = true; return; }
@@ -193,7 +298,7 @@
       ol.appendChild(li);
       return;
     }
-    var me = pidGet();
+    var me = effectivePid();
     for (var i = 0; i < list.length; i++) {
       var row = list[i];
       var li2 = document.createElement("li");
@@ -464,14 +569,24 @@
     });
 
     function refreshNameChip() {
-      el.nameChip.textContent = "Playing as " + nameGet() + " ✏️";
+      if (auth.user && auth.user.name) {
+        el.nameChip.textContent = "Playing as " + auth.user.name + " ✅";
+        el.nameChip.title = "Signed in with Google — sign out from the header";
+      } else {
+        el.nameChip.textContent = "Playing as " + nameGet() + " ✏️";
+        el.nameChip.title = "Change your bidder name";
+      }
     }
     el.nameChip.addEventListener("click", function () {
+      if (auth.user) return; // Google-signed-in name comes from the Google profile
       var n = prompt("Your bidder name (max 24 characters):", nameGet());
       if (n !== null) { nameSet(n); refreshNameChip(); }
     });
+    var logoutBtn = $("logout-btn");
+    if (logoutBtn) logoutBtn.addEventListener("click", signOut);
     refreshNameChip();
     loadLeaderboard();
+    initAuth();
 
     startUnit(d, "daily");
   }

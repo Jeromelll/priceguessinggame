@@ -2,6 +2,8 @@
   "name": "pgp-edge",
   "main": "worker.js",
   "compatibility_date": "2026-09-01",
+  // 填入 GCP OAuth Client ID（形如 xxxx.apps.googleusercontent.com）后重新 deploy 即生效
+  "vars": { "GOOGLE_CLIENT_ID": "" },
   "routes": [
     { "pattern": "priceguessinggame.com", "custom_domain": true }
   ],

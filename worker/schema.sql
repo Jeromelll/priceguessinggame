@@ -11,3 +11,18 @@ CREATE TABLE IF NOT EXISTS scores (
 );
 CREATE INDEX IF NOT EXISTS idx_scores_day_total ON scores(day, total DESC);
 CREATE INDEX IF NOT EXISTS idx_scores_player ON scores(player_id);
+CREATE TABLE IF NOT EXISTS users (
+  sub TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  picture TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  sid TEXT PRIMARY KEY,
+  sub TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_sub ON sessions(sub);
