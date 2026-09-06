@@ -1,0 +1,11 @@
+{
+  "name": "pgp-edge",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "routes": [
+    { "pattern": "priceguessinggame.com", "custom_domain": true }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "pgp-db", "database_id": "07be9c51-431f-4d28-8d98-c6e539374643" }
+  ]
+}

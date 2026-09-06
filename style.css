@@ -154,6 +154,46 @@ body {
 .results-card .btn-ghost { width: 100%; margin-top: 8px; }
 .countdown { margin-top: 16px; color: var(--muted); font-size: 0.95rem; }
 
+/* ---------- Rank & identity ---------- */
+.rank-line {
+  margin: 0 0 14px; padding: 9px 12px;
+  background: var(--accent-soft); border-radius: 10px;
+  font-weight: 700; color: var(--accent-dark); font-size: 0.98rem;
+}
+.name-chip {
+  display: inline-block; margin: 4px 0 0; padding: 4px 10px;
+  background: transparent; border: 1px dashed var(--line); border-radius: 999px;
+  color: var(--muted); font-size: 0.8rem; cursor: pointer; font-family: inherit;
+}
+.name-chip:hover { border-color: var(--accent); color: var(--accent); }
+.rl-avg {
+  flex-shrink: 0; font-size: 0.72rem; color: var(--muted);
+  background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
+}
+
+/* ---------- Leaderboard ---------- */
+.lb-intro { color: var(--muted); margin: 0 0 10px; }
+.lb-stats { font-weight: 700; color: var(--accent-dark); margin: 0 0 16px; }
+.lb-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 620px) { .lb-grid { grid-template-columns: 1fr 1fr; } }
+.lb-col {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 18px 16px;
+}
+.lb-col h3 { margin: 0 0 10px; font-size: 1rem; }
+.lb-list { list-style: none; margin: 0; padding: 0; }
+.lb-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: 8px; font-size: 0.9rem;
+}
+.lb-list li:nth-child(odd) { background: var(--bg); }
+.lb-list li.lb-me { background: var(--accent-soft); }
+.lb-rank { width: 30px; flex-shrink: 0; font-weight: 800; text-align: center; }
+.lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.lb-meta { flex-shrink: 0; color: var(--muted); font-size: 0.75rem; }
+.lb-pts { flex-shrink: 0; font-weight: 800; color: var(--accent); }
+.lb-empty { color: var(--muted); justify-content: center; }
+
 /* ---------- Content sections ---------- */
 .section { padding: 34px 16px 10px; }
 .section h2 { font-size: 1.45rem; letter-spacing: -0.02em; margin: 0 0 14px; }

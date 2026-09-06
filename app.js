@@ -10,6 +10,8 @@
   var EPOCH = { y: 2026, m: 9, d: 4 }; // puzzle #1
   var ITEMS_PER_UNIT = 5;
   var STORAGE_STATS = "pgg_stats_v1";
+  var STORAGE_PID = "pgg_pid_v1";
+  var STORAGE_NAME = "pgg_name_v1";
   var dailyPrefix = "pgg_daily_";
 
   // ---------- Utils ----------
@@ -87,6 +89,130 @@
     return { diffPct: diffPct, score: score, tier: tierOf(diffPct) };
   }
 
+  // ---------- Player identity ----------
+  function pidGet() {
+    var pid = null;
+    try { pid = localStorage.getItem(STORAGE_PID); } catch (e) {}
+    if (!pid || !/^[A-Za-z0-9-]{8,64}$/.test(pid)) {
+      pid = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : "pid-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e9).toString(36);
+      try { localStorage.setItem(STORAGE_PID, pid); } catch (e) {}
+    }
+    return pid;
+  }
+  function nameGet() {
+    var n = null;
+    try { n = localStorage.getItem(STORAGE_NAME); } catch (e) {}
+    if (!n) {
+      n = "Bidder-" + Math.floor(1000 + Math.random() * 9000);
+      try { localStorage.setItem(STORAGE_NAME, n); } catch (e) {}
+    }
+    return n;
+  }
+  function nameSet(n) {
+    n = String(n || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 24);
+    if (!n) return nameGet();
+    try { localStorage.setItem(STORAGE_NAME, n); } catch (e) {}
+    return n;
+  }
+
+  // ---------- Leaderboard API ----------
+  function apiBase() {
+    return location.hostname.indexOf("pages.dev") >= 0 ? "https://priceguessinggame.com" : "";
+  }
+
+  function submitScore() {
+    if (mode !== "daily" || !date) return;
+    var payload = {
+      day: dateKey(date),
+      pid: pidGet(),
+      name: nameGet(),
+      guesses: guesses.slice()
+    };
+    var total = 0;
+    for (var i = 0; i < results.length; i++) total += results[i].score;
+    el.rankLine.hidden = false;
+    el.rankLine.textContent = "Syncing your score…";
+    fetch(apiBase() + "/api/score", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d || !d.ok) { el.rankLine.textContent = ""; el.rankLine.hidden = true; return; }
+      var pct = d.players ? Math.round((d.rank - 1) / d.players * 100) : 0;
+      var line = "🏆 Rank #" + d.rank + " of " + d.players + " bidder" + (d.players === 1 ? "" : "s") +
+        " today" + (d.players ? " — top " + Math.max(1, pct + (pct === 0 ? 0 : 1)) + "%" : "");
+      if (d.community) {
+        el.rankLine.textContent = line;
+        augmentResultsList(d.community);
+      } else {
+        el.rankLine.textContent = line;
+      }
+      loadLeaderboard();
+    }).catch(function () {
+      el.rankLine.hidden = true;
+    });
+  }
+
+  function augmentResultsList(community) {
+    var lis = el.resultsList.children;
+    for (var i = 0; i < lis.length && i < community.length; i++) {
+      var li = lis[i];
+      if (li.querySelector(".rl-avg")) continue;
+      var avg = document.createElement("span");
+      avg.className = "rl-avg";
+      avg.textContent = "players avg " + fmtMoney(community[i]);
+      avg.title = "Average bid by all players on this item today";
+      li.appendChild(avg);
+    }
+  }
+
+  function loadLeaderboard() {
+    var day = dateKey(new Date());
+    fetch(apiBase() + "/api/leaderboard?day=" + day)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.ok) { el.lbWrap.hidden = true; return; }
+        el.lbWrap.hidden = false;
+        el.lbStats.textContent = d.today.players
+          ? d.today.players + " bidder" + (d.today.players === 1 ? "" : "s") + " played today · average unit " +
+            (d.today.avgTotal != null ? d.today.avgTotal : "—") + " / 500"
+          : "No bids placed today yet — be the first!";
+        renderLbList(el.lbToday, d.today.list, "total");
+        renderLbList(el.lbAlltime, d.alltime, "best", "games");
+      })
+      .catch(function () { el.lbWrap.hidden = true; });
+  }
+
+  function renderLbList(ol, list, ptsField, extraField) {
+    ol.innerHTML = "";
+    if (!list || !list.length) {
+      var li = document.createElement("li");
+      li.className = "lb-empty";
+      li.textContent = "— empty —";
+      ol.appendChild(li);
+      return;
+    }
+    var me = pidGet();
+    for (var i = 0; i < list.length; i++) {
+      var row = list[i];
+      var li2 = document.createElement("li");
+      var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "#" + (i + 1);
+      var isMe = row.player_id === me;
+      li2.innerHTML = '<span class="lb-rank"></span><span class="lb-name"></span>' +
+        '<span class="lb-meta"></span><span class="lb-pts"></span>';
+      li2.querySelector(".lb-rank").textContent = medal;
+      li2.querySelector(".lb-name").textContent = (row.name || "Anonymous") + (isMe ? " (you)" : "");
+      if (isMe) li2.className = "lb-me";
+      var meta = [];
+      if (row.greens != null) meta.push("🟩" + row.greens);
+      if (extraField && row[extraField] != null) meta.push(row[extraField] + " unit" + (row[extraField] === 1 ? "" : "s"));
+      li2.querySelector(".lb-meta").textContent = meta.join(" · ");
+      li2.querySelector(".lb-pts").textContent = row[ptsField] + "/500";
+      ol.appendChild(li2);
+    }
+  }
+
   // ---------- State ----------
   var mode = "daily";           // "daily" | "bonus"
   var date = null;              // puzzle date
@@ -113,7 +239,9 @@
     resultsCard: $("results-card"), resultsTitle: $("results-title"), resultsScore: $("results-score"),
     resultsList: $("results-list"), shareBtn: $("share-btn"), shareHint: $("share-hint"),
     bonusBtn: $("bonus-btn"), countdown: $("countdown"), countdownTime: $("countdown-time"),
-    statsBar: $("stats"), statStreak: $("stat-streak"), statPlayed: $("stat-played"), statBest: $("stat-best")
+    statsBar: $("stats"), statStreak: $("stat-streak"), statPlayed: $("stat-played"), statBest: $("stat-best"),
+    rankLine: $("rank-line"), nameChip: $("name-chip"),
+    lbWrap: $("lb-wrap"), lbStats: $("lb-stats"), lbToday: $("lb-today"), lbAlltime: $("lb-alltime")
   };
 
   // ---------- Progress dots ----------
@@ -185,6 +313,7 @@
       total >= 350 ? "Sharp Eye! 🎯" :
       total >= 250 ? "Not Bad! 👍" : "Rough Unit! 😅";
     el.resultsScore.textContent = total + " / 500";
+    el.rankLine.hidden = true;
 
     el.resultsList.innerHTML = "";
     for (var j = 0; j < unit.length; j++) {
@@ -200,8 +329,10 @@
       saveDailyResult(total);
       updateStats(total);
       startCountdown();
+      submitScore();
     } else {
       el.countdown.hidden = true;
+      el.rankLine.hidden = true;
     }
     renderStats();
   }
@@ -289,6 +420,7 @@
     el.unitDate.textContent = fmtDate(d) + (m === "daily" && num >= 1 ? "" : " — unlimited practice");
     el.bonusBtn.hidden = (m === "bonus");
     el.shareHint.textContent = "";
+    el.rankLine.hidden = true;
 
     // restore finished daily (replay of today's completed puzzle shows results)
     var saved = null;
@@ -330,6 +462,16 @@
     el.bonusBtn.addEventListener("click", function () {
       startUnit(new Date(), "bonus");
     });
+
+    function refreshNameChip() {
+      el.nameChip.textContent = "Playing as " + nameGet() + " ✏️";
+    }
+    el.nameChip.addEventListener("click", function () {
+      var n = prompt("Your bidder name (max 24 characters):", nameGet());
+      if (n !== null) { nameSet(n); refreshNameChip(); }
+    });
+    refreshNameChip();
+    loadLeaderboard();
 
     startUnit(d, "daily");
   }

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Price Guessing Game — Guess the Price of Mystery Items Daily (Free)</title>
-<meta name="description" content="A free daily price guessing game: bid on 5 mystery storage auction items, see the real prices, and share your score like Wordle. New puzzle every day. No sign-up, plays in your browser." />
+    <title>Price Guessing Game — Guess the Price, Climb the Global Leaderboard (Free)</title>
+    <meta name="description" content="A free daily price guessing game: bid on 5 mystery storage auction items, see the real prices, compare bids with players worldwide on the global leaderboard, and share your score like Wordle. New puzzle every day. No sign-up." />
 <link rel="canonical" href="https://priceguessinggame.com/" />
 <meta name="robots" content="index, follow" />
 <meta name="theme-color" content="#e8590c" />
@@ -59,6 +59,11 @@
     },
     {
       "@type": "Question",
+      "name": "Is there a leaderboard?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Everyone plays the same daily unit and your finished score is ranked instantly against all other bidders worldwide — including the average bid players placed on each item. No account needed; you just pick a bidder name." }
+    },
+    {
+      "@type": "Question",
       "name": "Is the game free?",
       "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely free, no account or sign-up needed. Everything runs in your browser and your streak is saved on your device." }
     }
@@ -76,6 +81,7 @@
     <a class="brand" href="/">🏷️ Price<span>Guessing</span>Game</a>
     <nav class="site-nav" aria-label="Site">
       <a href="#how-to-play">How to Play</a>
+      <a href="#leaderboard">Leaderboard</a>
       <a href="#faq">FAQ</a>
     </nav>
   </div>
@@ -131,14 +137,32 @@
     <article class="card results-card" id="results-card" hidden>
       <h2 class="results-title" id="results-title">Unit Complete!</h2>
       <div class="results-score" id="results-score">0 / 500</div>
+      <p class="rank-line" id="rank-line" hidden></p>
       <ul class="results-list" id="results-list"></ul>
       <button id="share-btn" class="btn btn-primary" type="button">Share Result 📋</button>
       <p class="share-hint" id="share-hint" aria-live="polite"></p>
       <button id="bonus-btn" class="btn btn-ghost" type="button">Play a Bonus Unit ♻️</button>
+      <button id="name-chip" class="name-chip" type="button" title="Change your bidder name">Playing as Bidder ✏️</button>
       <div class="countdown" id="countdown" hidden>
         Next unit in <strong id="countdown-time">--:--:--</strong>
       </div>
     </article>
+  </section>
+
+  <section class="wrap section" id="leaderboard" aria-label="Global leaderboard">
+    <h2>Daily Leaderboard — Bid Against the World</h2>
+    <p class="lb-intro">Everyone plays the same 5 items. Finish today's unit and your score lands on the global board — see exactly where you stand against every other bidder.</p>
+    <p class="lb-stats" id="lb-stats">Loading leaderboard…</p>
+    <div class="lb-grid" id="lb-wrap">
+      <div class="lb-col">
+        <h3>🏆 Today's Top 20</h3>
+        <ol class="lb-list" id="lb-today"></ol>
+      </div>
+      <div class="lb-col">
+        <h3>👑 All-Time Best Units</h3>
+        <ol class="lb-list" id="lb-alltime"></ol>
+      </div>
+    </div>
   </section>
 
   <section class="wrap section" id="how-to-play">
@@ -148,7 +172,7 @@
       <li><strong>Study the item card.</strong> You get the item's name, condition and a few telling details. That's all the intel you get, just like at a real storage auction.</li>
       <li><strong>Place your bid.</strong> Type what you think the item is really worth in dollars. Trust your gut — bargain hunters and eBay veterans have a real edge here.</li>
       <li><strong>See the reveal.</strong> The real price appears instantly. Within 10% is a green tag 🟩, within 25% yellow 🟨, within 50% orange 🟧, otherwise red 🟥.</li>
-      <li><strong>Finish the unit and share.</strong> Each item scores up to 100 points (a perfect unit is 500). Copy your spoiler-free share card and challenge your friends to guess the price.</li>
+      <li><strong>Finish the unit and climb the leaderboard.</strong> Each item scores up to 100 points (a perfect unit is 500). Your score goes on the global board instantly — see your rank against every bidder today. Copy your spoiler-free share card and challenge your friends to guess the price.</li>
     </ol>
     <p class="howto-note">Want more after the daily unit? Hit <strong>“Play a Bonus Unit”</strong> for unlimited random units — great practice for the daily auction game.</p>
   </section>
@@ -166,6 +190,10 @@
     <details>
       <summary>Is there really a new puzzle every day?</summary>
       <p>Yes — a new storage unit unlocks at midnight, and everyone around the world plays the same 5 items, so scores are directly comparable. Streaks are tracked on your device.</p>
+    </details>
+    <details>
+      <summary>Is there a leaderboard?</summary>
+      <p>Yes — a global one. Everyone plays the same daily unit, and when you finish, your score is ranked against every other bidder in the world instantly. You also see the average bid other players placed on each item, so you know whether your price instincts beat the crowd. A pick a bidder name once and it sticks.</p>
     </details>
     <details>
       <summary>Is it free? Do I need an account?</summary>
