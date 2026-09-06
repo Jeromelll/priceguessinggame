@@ -510,6 +510,8 @@
   var BR_ROUND_MS = 600000;
   var br = null;            // {round, unit, idx, done, timer, clockTimer}
   var brPollTimer = null;
+  var brChallenge = 0;      // friend's score from ?battle=N invite link
+  var brLastTotal = 0;      // our finished total this round
 
   function brStopTimers() {
     if (brPollTimer) { clearInterval(brPollTimer); brPollTimer = null; }
@@ -521,7 +523,13 @@
     el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true;
     el.countdown.hidden = true; el.closerCard.hidden = true;
     el.brCard.hidden = false;
-    el.brInputRow.hidden = true; el.brResult.hidden = true;
+    el.brInputRow.hidden = true; el.brResult.hidden = true; el.brShareHint.textContent = "";
+    if (brChallenge) {
+      el.brChallenge.hidden = false;
+      el.brChallenge.textContent = "🏆 Challenge: your friend scored " + brChallenge + "/500 — beat it!";
+    } else {
+      el.brChallenge.hidden = true;
+    }
     el.brHint.textContent = ""; el.brName.textContent = "Loading…"; el.brEmoji.textContent = "⏳";
     brStopTimers();
     fetch(apiBase() + "/api/br/state?pid=" + encodeURIComponent(effectivePid()), fetchOpts())
@@ -601,10 +609,23 @@
     el.brInputRow.hidden = true;
     el.brResult.hidden = false;
     if (d) {
+      brLastTotal = d.total;
       el.brResultTier.textContent = "🏁 Unit posted: " + d.total + "/500 — rank #" + d.rank + " of " + d.players;
       el.brResultTier.className = "reveal-tier " + (d.total >= 350 ? "t-green" : d.total >= 250 ? "t-yellow" : "t-red");
-      el.brResultLine.textContent = "Stick around — the live board keeps updating until the round ends.";
+      var line = "Stick around — the live board keeps updating until the round ends.";
+      if (brChallenge) {
+        line = d.total >= brChallenge
+          ? "🎉 You beat your friend's " + brChallenge + "/500! Challenge someone else."
+          : "😖 Your friend scored " + brChallenge + " — another round starts every 10 minutes.";
+      }
+      el.brResultLine.textContent = line;
     }
+  }
+
+  function brShare() {
+    var score = brLastTotal || (br && brChallenge) || 0;
+    var txt = "⚔️ Battle Royale on Price Guessing Game\nI scored " + score + "/500 in a live 10-minute round — think you can beat me?\nNew round every 10 minutes:\nhttps://priceguessinggame.com/?battle=" + score;
+    copyText(txt, el.brShareHint);
   }
 
   function brRefreshFromPayload(d) {
@@ -711,6 +732,7 @@
     brDesc: $("br-desc"), brInputRow: $("br-input-row"), brProg: $("br-prog"), brInput: $("br-input"),
     brGuessBtn: $("br-guess-btn"), brHint: $("br-hint"), brResult: $("br-result"),
     brResultTier: $("br-result-tier"), brResultLine: $("br-result-line"),
+    brShareBtn: $("br-share-btn"), brShareHint: $("br-share-hint"), brChallenge: $("br-challenge"),
     brBoard: $("br-board"), brBackBtn: $("br-back-btn")
   };
 
@@ -958,6 +980,7 @@
       if (e.key === "Enter") { e.preventDefault(); brGuess(); }
     });
     el.brBackBtn.addEventListener("click", exitBr);
+    el.brShareBtn.addEventListener("click", brShare);
 
     function refreshNameChip() {
       if (auth.user && auth.user.name) {
@@ -980,6 +1003,13 @@
     initAuth();
 
     startUnit(d, "daily");
+
+    // ?battle=N invite link → drop straight into Battle Royale with the friend's score
+    var bm = /(?:\?|&)battle=(\d{1,3})/.exec(location.search);
+    if (bm) {
+      brChallenge = Math.min(500, parseInt(bm[1], 10) || 0);
+      startBr();
+    }
   }
 
   if (document.readyState === "loading") {
