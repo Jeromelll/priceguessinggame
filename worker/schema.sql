@@ -40,3 +40,22 @@ CREATE TABLE IF NOT EXISTS br_scores (
   PRIMARY KEY (round, player_id)
 );
 CREATE INDEX IF NOT EXISTS idx_br_round_total ON br_scores(round, total DESC);
+
+-- Cookieless product analytics (no pid/sub/email/IP/bids/file contents)
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL DEFAULT (datetime('now')),
+  name TEXT NOT NULL,
+  page TEXT, x1 TEXT, x2 TEXT,
+  country TEXT, device TEXT, referrer TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_name ON events(name);
+
+CREATE TABLE IF NOT EXISTS events_rejected (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL DEFAULT (datetime('now')),
+  name TEXT NOT NULL,
+  page TEXT,
+  reason TEXT NOT NULL
+);
