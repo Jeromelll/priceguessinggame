@@ -6,7 +6,13 @@
 //   POST /api/auth/google      — verify Google ID token, create session, merge anon scores
 //   GET  /api/auth/me          — current session identity
 //   POST /api/auth/logout      — destroy session
+//   POST /api/evt              — cookieless analytics (whitelist only; unknown → events_rejected)
 // Everything else is proxied to the Pages deployment.
+//
+// Privacy-first analytics via D1 (DB / pgp-db):
+//   Server-side page_view for HTML proxied to Pages (path, country, device, referrer).
+//   POST /api/evt accepts { e, p, x1, x2 } from app.js.
+//   No cookies, no IP, no pid/sub/email, no bid amounts, no file contents.
 import { ITEMS } from "./items.mjs";
 
 const EPOCH = { y: 2026, m: 9, d: 4 }; // puzzle #1
@@ -99,6 +105,73 @@ function getCookie(request, name) {
   const cookie = request.headers.get("Cookie") || "";
   const m = new RegExp("(?:^|;\\s*)" + name + "=([A-Za-z0-9-]+)").exec(cookie);
   return m ? m[1] : null;
+}
+
+// ---------- cookieless analytics (I2B64 pattern) ----------
+const EVENT_NAMES = new Set(["page_view", "game_start", "game_complete", "round_abandon", "share"]);
+const ASSET_EXTS = /\.(css|js|mjs|map|png|jpe?g|gif|svg|webp|avif|ico|txt|xml|json|webmanifest|woff2?)$/i;
+
+function deviceType(ua) {
+  if (!ua) return "unknown";
+  if (/iPad|Tablet/i.test(ua)) return "tablet";
+  if (/Mobi|Android|iPhone/i.test(ua)) return "mobile";
+  return "desktop";
+}
+
+function clip(v, n) {
+  return String(v == null ? "" : v).slice(0, n);
+}
+
+async function logEvent(env, name, page, x1, x2, country, device, referrer) {
+  try {
+    if (!env.DB) return;
+    await env.DB.prepare(
+      "INSERT INTO events (name, page, x1, x2, country, device, referrer) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+      .bind(clip(name, 24), clip(page, 120), clip(x1, 60), clip(x2, 60), clip(country, 4), clip(device, 10), clip(referrer, 180))
+      .run();
+  } catch (e) {
+    // analytics must never break the site
+  }
+}
+
+async function logRejected(env, name, page, reason) {
+  try {
+    if (!env.DB) return;
+    await env.DB.prepare(
+      "INSERT INTO events_rejected (name, page, reason) VALUES (?, ?, ?)"
+    )
+      .bind(clip(name, 24) || "unknown", clip(page, 120), clip(reason, 60))
+      .run();
+  } catch (e) {
+    // analytics must never break the site
+  }
+}
+
+function requestMeta(request) {
+  return {
+    country: request.cf && request.cf.country,
+    device: deviceType(request.headers.get("user-agent")),
+    referrer: request.headers.get("referer"),
+  };
+}
+
+// POST /api/evt — { e, p, x1, x2 }; unknown names go to events_rejected (no silent drop)
+async function handleEvt(request, env) {
+  try {
+    const d = (await readBody(request)) || {};
+    const name = clip(d.e, 24);
+    const page = clip(d.p, 120);
+    const meta = requestMeta(request);
+    if (EVENT_NAMES.has(name)) {
+      await logEvent(env, name, page, d.x1, d.x2, meta.country, meta.device, meta.referrer);
+    } else {
+      await logRejected(env, name, page, "not_in_whitelist");
+    }
+  } catch (e) {
+    // always 204
+  }
+  return new Response(null, { status: 204 });
 }
 
 // ---------- session helpers ----------
@@ -470,6 +543,11 @@ export default {
 
     if (path === "/api/health") return withCors(request, json({ ok: true, ts: Date.now() }));
 
+    if (path === "/api/evt" && request.method === "POST") {
+      try { return withCors(request, await handleEvt(request, env)); }
+      catch (e) { return withCors(request, new Response(null, { status: 204 })); }
+    }
+
     if (path === "/api/auth/config" && request.method === "GET") {
       try { return withCors(request, await handleAuthConfig(env)); }
       catch (e) { return json({ ok: false, error: "server error" }, 500); }
@@ -507,7 +585,11 @@ export default {
       catch (e) { return json({ ok: false, error: "server error" }, 500); }
     }
 
-    // everything else → Pages
+    // everything else → Pages (server-side page_view for HTML only; no client page_view)
+    if (request.method === "GET" && !path.startsWith("/api/") && !ASSET_EXTS.test(path)) {
+      const meta = requestMeta(request);
+      ctx.waitUntil(logEvent(env, "page_view", path || "/", "", "", meta.country, meta.device, meta.referrer));
+    }
     url.hostname = "priceguessinggame.pages.dev";
     const resp = await fetch(new Request(url.toString(), request));
     const out = new Response(resp.body, resp);

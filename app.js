@@ -124,6 +124,17 @@
     return location.hostname.indexOf("pages.dev") >= 0 ? "https://priceguessinggame.com" : "";
   }
 
+  // Cookieless first-party analytics. Never send pid/sub/email/IP/bids/file contents.
+  // page_view is server-side only (Worker logs HTML GETs) — do not track it here.
+  function track(name, x1, x2) {
+    try {
+      var body = JSON.stringify({ e: name, p: location.pathname, x1: x1 || "", x2: x2 || "" });
+      var url = apiBase() + "/api/evt";
+      if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: "application/json" }))) return;
+      fetch(url, { method: "POST", body: body, keepalive: true }).catch(function () {});
+    } catch (e) { /* analytics must never break the game */ }
+  }
+
   // effective leaderboard identity: Google session maps to "g-"+sub server-side
   function effectivePid() {
     return auth.user && auth.user.sub ? "g-" + auth.user.sub : pidGet();
@@ -338,6 +349,7 @@
   }
 
   function startCloser() {
+    maybeAbandon();
     brStopTimers();
     el.brCard.hidden = true;
     var d = new Date();
@@ -361,7 +373,10 @@
     el.closerResult.hidden = true;
     el.closerCard.hidden = false;
     renderCloser();
-    if (!closer.done) setTimeout(function () { el.closerInput.focus(); }, 60);
+    if (!closer.done) {
+      track("game_start", "closer", closer.day);
+      setTimeout(function () { el.closerInput.focus(); }, 60);
+    }
   }
 
   function renderCloser() {
@@ -440,6 +455,7 @@
       closer.counted = true;
       persistCloser();
       updateCloserStats();
+      track("game_complete", "closer", (closer.won ? "win:" : "lose:") + closer.guesses.length);
     }
     renderCloser();
   }
@@ -499,9 +515,11 @@
       : "0/6 — the price got away";
     var txt = head + "\n" + rows + "  " + res + "\nCan you lock the price?\nhttps://priceguessinggame.com";
     copyText(txt, el.closerShareHint);
+    track("share", "closer", "clipboard");
   }
 
   function exitCloser() {
+    maybeAbandon();
     el.closerCard.hidden = true;
     startUnit(dailyDate, "daily");
   }
@@ -520,6 +538,7 @@
   function brPad(n) { return n < 10 ? "0" + n : "" + n; }
 
   function startBr() {
+    maybeAbandon();
     el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true;
     el.countdown.hidden = true; el.closerCard.hidden = true;
     el.brCard.hidden = false;
@@ -538,6 +557,7 @@
         if (!d || !d.ok) { el.brRoundLine.textContent = "Battle Royale is unavailable right now."; return; }
         br = { round: d.round, idx: d.me ? d.me.idx : 0, done: d.me ? d.me.idx >= 5 : false };
         br.unit = buildUnit("br-" + br.round);
+        if (!br.done) track("game_start", "br", String(br.round));
         el.brRoundLine.textContent = "Round ends in --:--";
         renderBrItem();
         brRefreshBoard();
@@ -595,7 +615,10 @@
         el.brHint.textContent = r.win ? "✅ Within 5% — great bid!" : (r.cls === "cl-yellow" ? "🟨 " + Math.round(r.pct) + "% off" : "🟥 " + Math.round(r.pct) + "% off");
         br.idx = d.idx;
         brRefreshFromPayload(d);
-        if (br.idx >= 5) brShowFinished(d);
+        if (br.idx >= 5) {
+          track("game_complete", "br", String(d.total));
+          brShowFinished(d);
+        }
         else renderBrItem();
         renderBrBoard(d.leaders, d.players);
       })
@@ -626,6 +649,7 @@
     var score = brLastTotal || (br && brChallenge) || 0;
     var txt = "⚔️ Battle Royale on Price Guessing Game\nI scored " + score + "/500 in a live 10-minute round — think you can beat me?\nNew round every 10 minutes:\nhttps://priceguessinggame.com/?battle=" + score;
     copyText(txt, el.brShareHint);
+    track("share", "br", "clipboard");
   }
 
   function brRefreshFromPayload(d) {
@@ -686,6 +710,7 @@
   }, 1000);
 
   function exitBr() {
+    maybeAbandon();
     brStopTimers();
     el.brCard.hidden = true;
     startUnit(dailyDate, "daily");
@@ -735,6 +760,39 @@
     brShareBtn: $("br-share-btn"), brShareHint: $("br-share-hint"), brChallenge: $("br-challenge"),
     brBoard: $("br-board"), brBackBtn: $("br-back-btn")
   };
+
+  // Current visible mode for abandon/share (daily/bonus live in `mode`; closer/br are overlays).
+  function playMode() {
+    if (el.closerCard && !el.closerCard.hidden && closer) return "closer";
+    if (el.brCard && !el.brCard.hidden && br) return "br";
+    return mode;
+  }
+
+  // Fire once per in-progress session: not finished, and at least one bid/guess made.
+  function maybeAbandon() {
+    try {
+      var m = playMode();
+      if (m === "closer") {
+        if (closer && !closer.done && closer.guesses && closer.guesses.length) {
+          track("round_abandon", "closer", String(closer.guesses.length));
+          closer.done = true;
+        }
+        return;
+      }
+      if (m === "br") {
+        if (br && br.idx > 0 && br.idx < 5 && !br.done) {
+          track("round_abandon", "br", String(br.idx));
+          br.done = true;
+        }
+        return;
+      }
+      if (!finished && guesses && guesses.length) {
+        track("round_abandon", mode, String(results.length || guesses.length));
+        guesses = [];
+        results = [];
+      }
+    } catch (e) { /* analytics must never break the game */ }
+  }
 
   // ---------- Progress dots ----------
   function renderProgress() {
@@ -793,7 +851,7 @@
   }
 
   // ---------- Results / share ----------
-  function finishUnit() {
+  function finishUnit(opts) {
     finished = true;
     var total = 0, greens = 0;
     for (var i = 0; i < results.length; i++) { total += results[i].score; if (results[i].diffPct <= 10) greens++; }
@@ -827,6 +885,7 @@
       el.rankLine.hidden = true;
     }
     renderStats();
+    if (!opts || !opts.restored) track("game_complete", mode, String(total));
   }
 
   function shareText() {
@@ -840,6 +899,7 @@
 
   function share() {
     copyText(shareText(), el.shareHint);
+    track("share", mode, "clipboard");
   }
 
   function copyText(txt, hintEl) {
@@ -905,6 +965,7 @@
 
   // ---------- Unit start / restore ----------
   function startUnit(d, m) {
+    maybeAbandon();
     mode = m; date = d; idx = 0; guesses = []; results = []; finished = false;
     unit = buildUnit(m === "daily" ? "daily-" + dateKey(d) : "bonus-" + d.getTime() + "-" + Math.floor(Math.random() * 1e9));
 
@@ -932,10 +993,11 @@
       results = [];
       for (var i = 0; i < ITEMS_PER_UNIT; i++) { results.push(scoreItem(guesses[i], unit[i].p)); }
       idx = ITEMS_PER_UNIT;
-      finishUnit();
+      finishUnit({ restored: true });
       // mark as replay: don't re-run updateStats (guard handles it), show share again
       return;
     }
+    track("game_start", m, dateKey(d));
     showItem();
   }
 
@@ -1003,6 +1065,8 @@
     initAuth();
 
     startUnit(d, "daily");
+
+    window.addEventListener("pagehide", maybeAbandon);
 
     // ?battle=N invite link → drop straight into Battle Royale with the friend's score
     var bm = /(?:\?|&)battle=(\d{1,3})/.exec(location.search);
