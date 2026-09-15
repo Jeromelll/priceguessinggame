@@ -125,6 +125,7 @@
       <div class="unit-side">
         <div class="progress" id="progress" aria-label="Progress"></div>
         <div class="mode-btns">
+          <button id="rummage-mode-btn" class="closer-entry" type="button" title="Bid a sealed unit, then pull finds one by one">📦 Rummage</button>
           <button id="closer-mode-btn" class="closer-entry" type="button" title="New mode: one item, six guesses">🔍 Close Call</button>
           <button id="br-mode-btn" class="closer-entry" type="button" title="Live 10-minute rounds against the world">⚔️ Battle Royale</button>
         </div>
@@ -231,6 +232,65 @@
       </div>
       <button id="br-back-btn" class="btn btn-ghost" type="button">← Back to Today's Unit</button>
     </article>
+
+    <!-- Rummage mode: sealed-unit bid, then pull finds one by one -->
+    <article class="card rummage-card" id="rummage-card" hidden>
+      <h2 class="closer-title">📦 Rummage — Crack the Unit</h2>
+      <p class="closer-sub">One bid on a <strong>sealed</strong> storage unit. Then pull finds one by one — you won’t know what’s inside until you dig.</p>
+
+      <div id="rg-bid-phase">
+        <div class="rg-crate" id="rg-crate" aria-hidden="true">🗃️</div>
+        <h3 class="item-name" id="rg-unit-name">Sealed Storage Unit</h3>
+        <ul class="rg-clues" id="rg-clues"></ul>
+        <div class="bid-row">
+          <label class="bid-label" for="rg-input">Your bid for the whole unit</label>
+          <div class="bid-input-wrap">
+            <span class="bid-prefix" aria-hidden="true">$</span>
+            <input id="rg-input" type="number" inputmode="numeric" min="1" max="9999999" step="1" placeholder="800" autocomplete="off" />
+          </div>
+          <button id="rg-bid-btn" class="btn btn-primary" type="button">Lock Bid &amp; Crack It</button>
+        </div>
+        <p class="bid-hint" id="rg-hint"></p>
+      </div>
+
+      <div id="rg-dig-phase" hidden>
+        <div class="rg-pnl" aria-live="polite">
+          <div class="rg-pnl-cell">Paid <strong id="rg-paid">$0</strong></div>
+          <div class="rg-pnl-cell">Hauled <strong id="rg-rec">$0</strong></div>
+          <div class="rg-pnl-cell"><span id="rg-pnl-val" class="rg-pnl-num">P&amp;L —</span></div>
+        </div>
+        <div class="rg-crate" id="rg-crate-dig" aria-hidden="true">🗃️</div>
+        <p class="rg-remain" id="rg-remain">5 finds left</p>
+        <div class="rg-find" id="rg-find" hidden>
+          <div class="item-emoji" id="rg-find-emoji" aria-hidden="true">📦</div>
+          <h3 class="item-name" id="rg-find-name">Find</h3>
+          <p class="item-desc" id="rg-find-desc"></p>
+          <div class="reveal-price" id="rg-find-price"></div>
+          <p class="rg-find-note" id="rg-find-note"></p>
+        </div>
+        <div class="rg-offer" id="rg-offer" hidden>
+          <p id="rg-offer-text"></p>
+          <div class="rg-offer-btns">
+            <button id="rg-sell-btn" class="btn btn-primary" type="button">Sell it</button>
+            <button id="rg-keep-btn" class="btn btn-ghost" type="button">Keep — wait for market</button>
+          </div>
+        </div>
+        <button id="rg-pull-btn" class="btn btn-primary" type="button">Pull next find →</button>
+      </div>
+
+      <div id="rg-result" hidden>
+        <div class="reveal-tier" id="rg-result-tier" aria-live="polite"></div>
+        <div class="results-score" id="rg-result-score"></div>
+        <p class="reveal-line" id="rg-result-line"></p>
+        <ul class="results-list" id="rg-result-list"></ul>
+        <button id="rg-share-btn" class="btn btn-primary" type="button">Share Haul 📋</button>
+        <p class="share-hint" id="rg-share-hint" aria-live="polite"></p>
+        <button id="rg-again-btn" class="btn btn-ghost" type="button">Rummage another unit ♻️</button>
+      </div>
+
+      <p class="closer-stats-line" id="rg-stats-line"></p>
+      <button id="rg-back-btn" class="btn btn-ghost" type="button">← Back to Today's Unit</button>
+    </article>
   </section>
 
   <section class="wrap section" id="leaderboard" aria-label="Global leaderboard">
@@ -258,7 +318,7 @@
       <li><strong>See the reveal.</strong> The real price appears instantly. Within 10% is a green tag 🟩, within 25% yellow 🟨, within 50% orange 🟧, otherwise red 🟥.</li>
       <li><strong>Finish the unit and climb the leaderboard.</strong> Each item scores up to 100 points (a perfect unit is 500). Your score goes on the global board instantly — see your rank against every bidder today. Copy your spoiler-free share card and challenge your friends to guess the price.</li>
     </ol>
-    <p class="howto-note">Want more after the daily unit? Hit <strong>“Play a Bonus Unit”</strong> for unlimited random units — great practice for the daily auction game.</p>
+    <p class="howto-note">Want more after the daily unit? Hit <strong>“Play a Bonus Unit”</strong> for unlimited random units, or <strong>📦 Rummage</strong> to bid a sealed unit and pull finds one by one — the haul is the point, not the bid screen.</p>
   </section>
 
   <section class="wrap section" id="faq">
@@ -290,6 +350,10 @@
     <details>
       <summary>What is Battle Royale mode?</summary>
       <p>Battle Royale is the live multiplayer mode: continuous 10-minute rounds where every player bids on the same 5 mystery items and the scoreboard updates in real time. Finish all 5 items before the round ends to post your total.</p>
+    </details>
+    <details>
+      <summary>What is Rummage mode?</summary>
+      <p>Rummage is the sealed-unit mode. You bid on a locked storage unit from a few hallway clues — no item list. Then you crack it open and pull finds one by one. Sometimes a picker offers cash before the market price is called; sell or keep, then see if you beat the lot. Your score is profit and loss against the bid.</p>
     </details>
     <details>
       <summary>Where do the item prices come from?</summary>

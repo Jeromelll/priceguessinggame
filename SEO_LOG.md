@@ -1,3 +1,19 @@
+## 2026-09-15 — Rummage 摸金模式
+
+- 新模式 📦 Rummage：封仓储位出价（只给走廊线索，不给物品清单）→ 逐件掏宝 → 偶发 picker 报价（先报价后揭市场价，Sell/Keep）→ 以 P&L 对出价结算
+- 不改 daily 5 件猜价 / 排行榜 / Close Call / Battle Royale；纯前端，Worker 无改动
+- 日更 rummage 种子 `rummage-YYYY-MM-DD`，localStorage 可中途续挖
+
+## 2026-09-07 — 行为埋点上线（Worker D1 + track）
+
+- PR: https://github.com/Jeromelll/priceguessinggame/pull/1 → merged `c491e7a`
+- D1 `pgp-db`: 建表 `events` / `events_rejected`（schema.sql remote execute）
+- Worker `pgp-edge` Version ID: `d970c6e2-0d91-46ec-8abf-66f09e9a06e2`（含 `POST /api/evt` + server `page_view`）
+- Pages: `https://7dc6ad8d.priceguessinggame.pages.dev`（app.js `track` 挂点）
+- 白名单: `page_view` / `game_start` / `game_complete` / `round_abandon` / `share`（无 `score_submit`）
+- 冒烟: POST 合法事件→events；未知 `not_a_real_event`→events_rejected `not_in_whitelist`；HTML GET→page_view
+- 无 GA4
+
 # SEO_LOG — priceguessinggame.com
 
 > 惯例照 image-to-base64：目标词、决策依据、迭代记录留档。

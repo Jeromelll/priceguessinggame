@@ -364,6 +364,8 @@
     if (closer.guesses.length >= 6) closer.done = true;
 
     el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true; el.countdown.hidden = true;
+    if (el.rummageCard) el.rummageCard.hidden = true;
+    if (el.progress) el.progress.hidden = false;
     el.closerEmoji.textContent = closer.item.e;
     el.closerName.textContent = closer.item.n;
     el.closerDesc.textContent = closer.item.d + " (" + closer.item.c + ")";
@@ -541,6 +543,8 @@
     maybeAbandon();
     el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true;
     el.countdown.hidden = true; el.closerCard.hidden = true;
+    if (el.rummageCard) el.rummageCard.hidden = true;
+    if (el.progress) el.progress.hidden = false;
     el.brCard.hidden = false;
     el.brInputRow.hidden = true; el.brResult.hidden = true; el.brShareHint.textContent = "";
     if (brChallenge) {
@@ -716,6 +720,383 @@
     startUnit(dailyDate, "daily");
   }
 
+  // ---------- Rummage mode (sealed unit → pull finds one by one) ----------
+  var rummagePrefix = "pgg_rummage_";
+  var rg = null; // {day,seed,unit,clues,rng,bid,idx,recovered,pulls,offered,phase,counted,bonus,pendingOffer}
+  var rgBusy = false;
+  var RG_CLUES = {
+    Electronics: ["A nest of black cables by the roller door.", "A faded big-box store bag on the floor."],
+    Collectibles: ["Cardboard boxes marked COLLECT in Sharpie.", "A cracked display case in the back corner."],
+    Tools: ["The unit smells like motor oil.", "A pegboard, half the hooks empty."],
+    Home: ["A stack of kitchen boxes, tape yellowed.", "Something heavy under a moving blanket."],
+    Outdoors: ["A tent bag leaking poles.", "Muddy boots by the threshold."],
+    Music: ["A gig bag leaning on the wall.", "Foam padding — something fragile."],
+    Toys: ["A bin of mixed plastic, sun-faded.", "Torn Christmas wrap from years ago."],
+    Fashion: ["A garment bag still zipped.", "Dusty shoe boxes, one lid off."],
+    Misc: ["Unlabeled totes stacked three high.", "A tarp covering the left wall."]
+  };
+
+  function rummageClues(unit, rng) {
+    var clues = [];
+    var seen = {};
+    var i, cat, pool, total = 0;
+    for (i = 0; i < unit.length; i++) {
+      total += unit[i].p;
+      cat = unit[i].c;
+      if (seen[cat]) continue;
+      seen[cat] = true;
+      pool = RG_CLUES[cat] || RG_CLUES.Misc;
+      clues.push(pool[Math.floor(rng() * pool.length)]);
+    }
+    if (total > 2500) clues.unshift("Packed to the ceiling. The padlock was still warm.");
+    else if (total > 900) clues.unshift("A 10×10, stacked halfway, dust in the air.");
+    else clues.unshift("A 10×5 from the hallway. Looks half empty.");
+    return clues.slice(0, 3);
+  }
+
+  function rummageOfferAmt(it, rng) {
+    var band = rng();
+    var mult = band < 0.28 ? (0.42 + rng() * 0.38)
+      : band < 0.72 ? (0.88 + rng() * 0.28)
+      : (1.35 + rng() * 1.85);
+    return Math.max(8, Math.round(it.p * mult / 5) * 5);
+  }
+
+  function rummageWantOffer(it, idx, rng, offered) {
+    if (offered >= 2) return false;
+    if (idx === ITEMS_PER_UNIT - 1 && offered === 0) return true;
+    if (it.p >= 350) return rng() < 0.7;
+    return rng() < 0.32;
+  }
+
+  function rgReducedMotion() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function persistRg() {
+    if (!rg || rg.bonus || rg.bid == null) return;
+    try {
+      localStorage.setItem(rummagePrefix + rg.day, JSON.stringify({
+        bid: rg.bid, pulls: rg.pulls, counted: rg.counted
+      }));
+    } catch (e) {}
+  }
+
+  function rgTrueTotal() {
+    var t = 0, i;
+    for (i = 0; i < rg.unit.length; i++) t += rg.unit[i].p;
+    return t;
+  }
+
+  function rgRenderPnl() {
+    if (!rg || rg.bid == null) return;
+    el.rgPaid.textContent = fmtMoney(rg.bid);
+    el.rgRec.textContent = fmtMoney(rg.recovered);
+    var pnl = rg.recovered - rg.bid;
+    if (pnl > 0) { el.rgPnlVal.textContent = "P&L +" + fmtMoney(pnl); el.rgPnlVal.className = "rg-pnl-num t-green"; }
+    else if (pnl < 0) { el.rgPnlVal.textContent = "P&L −" + fmtMoney(-pnl); el.rgPnlVal.className = "rg-pnl-num t-red"; }
+    else { el.rgPnlVal.textContent = "P&L even"; el.rgPnlVal.className = "rg-pnl-num"; }
+  }
+
+  function rgRenderStats() {
+    var s = statsLoad();
+    var r = s.rummage;
+    el.rgStatsLine.textContent = r && r.played
+      ? "🔥 Streak " + (r.streak || 0) + " · " + (r.wins || 0) + "/" + r.played + " in the black" +
+        (r.best != null ? " · Best haul " + (r.best >= 0 ? "+" : "−") + fmtMoney(Math.abs(r.best)) : "")
+      : "";
+  }
+
+  function startRummage(bonus) {
+    maybeAbandon();
+    brStopTimers();
+    el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true;
+    el.countdown.hidden = true; el.closerCard.hidden = true; el.brCard.hidden = true;
+    el.rummageCard.hidden = false;
+    el.progress.hidden = true;
+    rgBusy = false;
+
+    var d = dailyDate || new Date();
+    var day = dateKey(d);
+    var seed = bonus ? ("rummage-bonus-" + Date.now() + "-" + Math.floor(Math.random() * 1e9))
+      : ("rummage-" + day);
+    var rng = mulberry32(hashStr(seed + "-clues"));
+    rg = {
+      day: day, seed: seed, unit: buildUnit(seed), rng: mulberry32(hashStr(seed + "-offers")),
+      bid: null, idx: 0, recovered: 0, pulls: [], offered: 0,
+      phase: "bid", counted: false, bonus: !!bonus, pendingOffer: 0
+    };
+    rg.clues = rummageClues(rg.unit, rng);
+
+    if (!bonus) {
+      try {
+        var saved = JSON.parse(localStorage.getItem(rummagePrefix + day));
+        if (saved && typeof saved.bid === "number") {
+          rg.bid = saved.bid;
+          rg.pulls = Array.isArray(saved.pulls) ? saved.pulls : [];
+          rg.counted = !!saved.counted;
+          rg.idx = rg.pulls.length;
+          rg.recovered = 0;
+          for (var i = 0; i < rg.pulls.length; i++) rg.recovered += rg.pulls[i].amount;
+        }
+      } catch (e) {}
+    }
+
+    el.rgShareHint.textContent = "";
+    el.rgHint.textContent = "";
+    el.unitTitle.textContent = bonus ? "Bonus Rummage ♻️" : "Rummage — Sealed Unit";
+    el.unitDate.textContent = fmtDate(d);
+    rgRenderStats();
+
+    if (rg.idx >= ITEMS_PER_UNIT && rg.bid != null) {
+      rgShowResult();
+      return;
+    }
+    if (rg.bid != null) {
+      rgStartDig(true);
+      return;
+    }
+    rgShowBid();
+    track("game_start", "rummage", bonus ? "bonus" : day);
+  }
+
+  function rgShowBid() {
+    rg.phase = "bid";
+    el.rgBidPhase.hidden = false;
+    el.rgDigPhase.hidden = true;
+    el.rgResult.hidden = true;
+    el.rgUnitName.textContent = rg.bonus ? "Sealed Bonus Unit" : "Today's Sealed Unit";
+    el.rgClues.innerHTML = "";
+    for (var i = 0; i < rg.clues.length; i++) {
+      var li = document.createElement("li");
+      li.textContent = rg.clues[i];
+      el.rgClues.appendChild(li);
+    }
+    el.rgInput.value = "";
+    setTimeout(function () { el.rgInput.focus(); }, 60);
+  }
+
+  function rgLockBid() {
+    if (!rg || rg.phase !== "bid") return;
+    var raw = el.rgInput.value.trim();
+    if (!/^\d{1,7}$/.test(raw)) {
+      el.rgHint.textContent = "Enter a whole dollar amount, e.g. 800.";
+      el.rgInput.focus();
+      return;
+    }
+    rg.bid = parseInt(raw, 10);
+    persistRg();
+    rgStartDig(false);
+  }
+
+  function rgStartDig(resuming) {
+    rg.phase = "dig";
+    el.rgBidPhase.hidden = true;
+    el.rgResult.hidden = true;
+    el.rgDigPhase.hidden = false;
+    el.rgFind.hidden = true;
+    el.rgOffer.hidden = true;
+    el.rgPullBtn.hidden = false;
+    el.rgPullBtn.disabled = false;
+    el.rgPullBtn.textContent = rg.idx === 0 ? "Crack it open — first find →" : "Pull next find →";
+    el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " left in the unit";
+    rgRenderPnl();
+    if (resuming && rg.pulls.length) {
+      var last = rg.unit[rg.idx - 1];
+      if (last) {
+        el.rgFind.hidden = false;
+        el.rgFindEmoji.textContent = last.e;
+        el.rgFindName.textContent = last.n;
+        el.rgFindDesc.textContent = last.d + " (" + last.c + ")";
+        el.rgFindPrice.textContent = fmtMoney(last.p);
+        el.rgFindNote.textContent = "Last find — keep digging.";
+      }
+    }
+  }
+
+  function rgPull() {
+    if (!rg || rgBusy || rg.phase !== "dig") return;
+    if (rg.idx >= ITEMS_PER_UNIT) { rgShowResult(); return; }
+    rgBusy = true;
+    el.rgPullBtn.disabled = true;
+    el.rgOffer.hidden = true;
+    el.rgFind.hidden = true;
+    el.rgFindNote.textContent = "";
+    el.rgFindPrice.textContent = "";
+    el.rgCrateDig.classList.remove("rg-shake");
+    void el.rgCrateDig.offsetWidth;
+    el.rgCrateDig.classList.add("rg-shake");
+    var delay = rgReducedMotion() ? 0 : 420;
+    var token = rg;
+    setTimeout(function () {
+      if (rg !== token || rg.phase !== "dig") { rgBusy = false; return; }
+      rgRevealFind();
+    }, delay);
+  }
+
+  function rgRevealFind() {
+    if (!rg || rg.phase !== "dig") { rgBusy = false; return; }
+    var it = rg.unit[rg.idx];
+    el.rgFind.hidden = false;
+    el.rgFind.classList.remove("rg-find-pop");
+    void el.rgFind.offsetWidth;
+    el.rgFind.classList.add("rg-find-pop");
+    el.rgFindEmoji.textContent = it.e;
+    el.rgFindName.textContent = it.n;
+    el.rgFindDesc.textContent = it.d + " (" + it.c + ")";
+    el.rgFindPrice.textContent = "";
+    el.rgFindNote.textContent = "What's it worth?";
+    el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " still in the unit";
+    var offer = rummageWantOffer(it, rg.idx, rg.rng, rg.offered) ? rummageOfferAmt(it, rg.rng) : 0;
+    rg.pendingOffer = offer;
+    if (offer) {
+      rg.offered++;
+      rg.phase = "offer";
+      el.rgOffer.hidden = false;
+      el.rgOfferText.textContent = "A picker walks over. “I’ll take it off your hands for " +
+        fmtMoney(offer) + ". Right now.” Market hasn’t been called.";
+      el.rgPullBtn.hidden = true;
+      rgBusy = false;
+    } else {
+      var pause = rgReducedMotion() ? 0 : 280;
+      var token = rg;
+      setTimeout(function () {
+        if (rg !== token) { rgBusy = false; return; }
+        rgCommitFind(false, it.p);
+      }, pause);
+    }
+  }
+
+  function rgSell() {
+    if (!rg || rg.phase !== "offer") return;
+    rgCommitFind(true, rg.pendingOffer);
+  }
+
+  function rgKeep() {
+    if (!rg || rg.phase !== "offer") return;
+    rgCommitFind(false, rg.unit[rg.idx].p);
+  }
+
+  function rgCommitFind(sold, amount) {
+    if (!rg || (rg.phase !== "dig" && rg.phase !== "offer")) return;
+    var it = rg.unit[rg.idx];
+    rg.pulls.push({ sold: sold, amount: amount, market: it.p });
+    rg.recovered += amount;
+    el.rgFindPrice.textContent = fmtMoney(it.p);
+    var delta = amount - it.p;
+    if (sold) {
+      el.rgFindNote.textContent = delta >= 0
+        ? "Sold for " + fmtMoney(amount) + " · market " + fmtMoney(it.p) + " · beat the lot by " + fmtMoney(delta)
+        : "Sold for " + fmtMoney(amount) + " · market " + fmtMoney(it.p) + " · left " + fmtMoney(-delta) + " on the table";
+    } else {
+      el.rgFindNote.textContent = "Market " + fmtMoney(it.p) + " — added to the haul.";
+    }
+    rg.idx++;
+    persistRg();
+    rgRenderPnl();
+    rg.phase = "dig";
+    rgBusy = false;
+    el.rgOffer.hidden = true;
+    if (rg.idx >= ITEMS_PER_UNIT) {
+      el.rgPullBtn.hidden = true;
+      el.rgRemain.textContent = "Unit's empty.";
+      setTimeout(rgShowResult, rgReducedMotion() ? 0 : 700);
+    } else {
+      el.rgPullBtn.hidden = false;
+      el.rgPullBtn.disabled = false;
+      el.rgPullBtn.textContent = "Pull next find →";
+      el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " left in the unit";
+    }
+  }
+
+  function rgShowResult() {
+    if (!rg) return;
+    rg.phase = "done";
+    el.rgBidPhase.hidden = true;
+    el.rgDigPhase.hidden = true;
+    el.rgResult.hidden = false;
+    var pnl = rg.recovered - rg.bid;
+    var trueTotal = rgTrueTotal();
+    var closeness = scoreItem(rg.bid, trueTotal);
+    if (pnl > 0) {
+      el.rgResultTier.textContent = "💰 In the black";
+      el.rgResultTier.className = "reveal-tier t-green";
+    } else if (pnl < 0) {
+      el.rgResultTier.textContent = "💸 Rough unit";
+      el.rgResultTier.className = "reveal-tier t-red";
+    } else {
+      el.rgResultTier.textContent = "Even money";
+      el.rgResultTier.className = "reveal-tier t-yellow";
+    }
+    el.rgResultScore.textContent = (pnl >= 0 ? "+" : "−") + fmtMoney(Math.abs(pnl));
+    el.rgResultLine.textContent = "Paid " + fmtMoney(rg.bid) + " · hauled " + fmtMoney(rg.recovered) +
+      " · true market " + fmtMoney(trueTotal) + " · bid was " +
+      (closeness.diffPct < 0.5 ? "<1%" : Math.round(closeness.diffPct) + "%") + " off";
+    el.rgResultList.innerHTML = "";
+    for (var j = 0; j < rg.unit.length; j++) {
+      var pull = rg.pulls[j];
+      var li = document.createElement("li");
+      var mark = pull && pull.sold ? (pull.amount >= pull.market ? "💰" : "😬") : "📦";
+      li.innerHTML = '<span class="rl-emoji"></span><span class="rl-name"></span><span class="rl-pts"></span>';
+      li.querySelector(".rl-emoji").textContent = mark;
+      li.querySelector(".rl-name").textContent = rg.unit[j].n;
+      li.querySelector(".rl-pts").textContent = pull
+        ? (pull.sold ? "sold " + fmtMoney(pull.amount) : fmtMoney(rg.unit[j].p))
+        : fmtMoney(rg.unit[j].p);
+      el.rgResultList.appendChild(li);
+    }
+    if (!rg.counted && !rg.bonus) {
+      rg.counted = true;
+      persistRg();
+      updateRummageStats(pnl);
+      track("game_complete", "rummage", String(pnl));
+    } else if (rg.bonus && !rg.counted) {
+      rg.counted = true;
+      track("game_complete", "rummage", "bonus:" + pnl);
+    }
+    rgRenderStats();
+  }
+
+  function updateRummageStats(pnl) {
+    var s = statsLoad();
+    var r = s.rummage = s.rummage || { played: 0, wins: 0, streak: 0, maxStreak: 0, best: null };
+    r.played++;
+    if (pnl > 0) {
+      r.wins++;
+      var y = new Date(); y.setDate(y.getDate() - 1);
+      r.streak = (s.lastRummage === dateKey(y)) ? (r.streak || 0) + 1 : 1;
+      if ((r.streak || 0) > (r.maxStreak || 0)) r.maxStreak = r.streak;
+    } else {
+      r.streak = 0;
+    }
+    if (r.best == null || pnl > r.best) r.best = pnl;
+    s.lastRummage = rg.day;
+    statsSave(s);
+  }
+
+  function rgShare() {
+    if (!rg) return;
+    var pnl = rg.recovered - rg.bid;
+    var rows = "";
+    for (var i = 0; i < rg.pulls.length; i++) {
+      var p = rg.pulls[i];
+      rows += p.sold ? (p.amount >= p.market ? "💰" : "😬") : "📦";
+    }
+    var head = "🏷️ Price Guessing Game — Rummage #" + Math.max(1, puzzleNum(dailyDate || new Date()));
+    var txt = head + "\n" + rows + "\nPaid " + fmtMoney(rg.bid) + " · hauled " + fmtMoney(rg.recovered) +
+      " · P&L " + (pnl >= 0 ? "+" : "−") + fmtMoney(Math.abs(pnl)) +
+      "\nCrack a sealed unit:\nhttps://priceguessinggame.com";
+    copyText(txt, el.rgShareHint);
+    track("share", "rummage", "clipboard");
+  }
+
+  function exitRummage() {
+    maybeAbandon();
+    el.rummageCard.hidden = true;
+    el.progress.hidden = false;
+    startUnit(dailyDate, "daily");
+  }
+
   // ---------- State ----------
   var mode = "daily";           // "daily" | "bonus"
   var date = null;              // puzzle date
@@ -758,11 +1139,25 @@
     brGuessBtn: $("br-guess-btn"), brHint: $("br-hint"), brResult: $("br-result"),
     brResultTier: $("br-result-tier"), brResultLine: $("br-result-line"),
     brShareBtn: $("br-share-btn"), brShareHint: $("br-share-hint"), brChallenge: $("br-challenge"),
-    brBoard: $("br-board"), brBackBtn: $("br-back-btn")
+    brBoard: $("br-board"), brBackBtn: $("br-back-btn"),
+    rummageModeBtn: $("rummage-mode-btn"), rummageCard: $("rummage-card"),
+    rgBidPhase: $("rg-bid-phase"), rgCrate: $("rg-crate"), rgUnitName: $("rg-unit-name"),
+    rgClues: $("rg-clues"), rgInput: $("rg-input"), rgBidBtn: $("rg-bid-btn"), rgHint: $("rg-hint"),
+    rgDigPhase: $("rg-dig-phase"), rgPaid: $("rg-paid"), rgRec: $("rg-rec"), rgPnlVal: $("rg-pnl-val"),
+    rgCrateDig: $("rg-crate-dig"), rgRemain: $("rg-remain"),
+    rgFind: $("rg-find"), rgFindEmoji: $("rg-find-emoji"), rgFindName: $("rg-find-name"),
+    rgFindDesc: $("rg-find-desc"), rgFindPrice: $("rg-find-price"), rgFindNote: $("rg-find-note"),
+    rgOffer: $("rg-offer"), rgOfferText: $("rg-offer-text"), rgSellBtn: $("rg-sell-btn"),
+    rgKeepBtn: $("rg-keep-btn"), rgPullBtn: $("rg-pull-btn"),
+    rgResult: $("rg-result"), rgResultTier: $("rg-result-tier"), rgResultScore: $("rg-result-score"),
+    rgResultLine: $("rg-result-line"), rgResultList: $("rg-result-list"),
+    rgShareBtn: $("rg-share-btn"), rgShareHint: $("rg-share-hint"), rgAgainBtn: $("rg-again-btn"),
+    rgStatsLine: $("rg-stats-line"), rgBackBtn: $("rg-back-btn")
   };
 
   // Current visible mode for abandon/share (daily/bonus live in `mode`; closer/br are overlays).
   function playMode() {
+    if (el.rummageCard && !el.rummageCard.hidden && rg) return "rummage";
     if (el.closerCard && !el.closerCard.hidden && closer) return "closer";
     if (el.brCard && !el.brCard.hidden && br) return "br";
     return mode;
@@ -772,6 +1167,13 @@
   function maybeAbandon() {
     try {
       var m = playMode();
+      if (m === "rummage") {
+        if (rg && rg.phase !== "done" && rg.bid != null && rg.idx < ITEMS_PER_UNIT) {
+          track("round_abandon", "rummage", String(rg.idx));
+          rg.phase = "done";
+        }
+        return;
+      }
       if (m === "closer") {
         if (closer && !closer.done && closer.guesses && closer.guesses.length) {
           track("round_abandon", "closer", String(closer.guesses.length));
@@ -977,7 +1379,10 @@
     el.bonusBtn.hidden = (m === "bonus");
     el.closerModeBtn.hidden = (m === "bonus");
     el.brModeBtn.hidden = (m === "bonus");
+    if (el.rummageModeBtn) el.rummageModeBtn.hidden = (m === "bonus");
     el.closerCard.hidden = true;
+    if (el.rummageCard) el.rummageCard.hidden = true;
+    if (el.progress) el.progress.hidden = false;
     if (typeof brStopTimers === "function") brStopTimers();
     el.brCard.hidden = true;
     el.shareHint.textContent = "";
@@ -1025,6 +1430,19 @@
     el.bonusBtn.addEventListener("click", function () {
       startUnit(new Date(), "bonus");
     });
+
+    // Rummage mode
+    el.rummageModeBtn.addEventListener("click", function () { startRummage(false); });
+    el.rgBidBtn.addEventListener("click", rgLockBid);
+    el.rgInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); rgLockBid(); }
+    });
+    el.rgPullBtn.addEventListener("click", rgPull);
+    el.rgSellBtn.addEventListener("click", rgSell);
+    el.rgKeepBtn.addEventListener("click", rgKeep);
+    el.rgShareBtn.addEventListener("click", rgShare);
+    el.rgAgainBtn.addEventListener("click", function () { startRummage(true); });
+    el.rgBackBtn.addEventListener("click", exitRummage);
 
     // Close Call mode
     el.closerModeBtn.addEventListener("click", startCloser);

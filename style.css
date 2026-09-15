@@ -122,7 +122,7 @@ body {
 .cl-yellow { background: #fff3bf; color: #e67700; }
 .cl-red { background: #ffe3e3; color: #c92a2a; }
 .closer-stats-line { font-size: 0.85rem; color: var(--muted); margin: 14px 0 0; }
-.mode-btns { display: flex; gap: 6px; }
+.mode-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Close Call guess distribution (Wordle-style bars) */
 .closer-dist { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-width: 340px; margin-left: auto; margin-right: auto; }
@@ -253,6 +253,63 @@ body {
 .lb-meta { flex-shrink: 0; color: var(--muted); font-size: 0.75rem; }
 .lb-pts { flex-shrink: 0; font-weight: 800; color: var(--accent); }
 .lb-empty { color: var(--muted); justify-content: center; }
+
+/* ---------- Rummage (sealed unit → pull finds) ---------- */
+.rummage-card { text-align: center; }
+.rg-crate {
+  font-size: 4rem; line-height: 1.1; margin: 4px 0 8px;
+  display: inline-block; transform-origin: 50% 80%;
+}
+.rg-crate.rg-shake { animation: rg-shake 0.45s ease; }
+@keyframes rg-shake {
+  0%, 100% { transform: rotate(0) translateY(0); }
+  18% { transform: rotate(-9deg) translateY(-6px); }
+  36% { transform: rotate(8deg) translateY(-2px); }
+  54% { transform: rotate(-6deg) translateY(-5px); }
+  72% { transform: rotate(4deg); }
+}
+.rg-clues {
+  list-style: none; margin: 0 auto 16px; padding: 0;
+  text-align: left; max-width: 28em; color: var(--muted); font-size: 0.95rem;
+}
+.rg-clues li {
+  padding: 7px 10px 7px 28px; margin-bottom: 6px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  position: relative;
+}
+.rg-clues li::before {
+  content: "👁"; position: absolute; left: 8px; top: 7px; font-size: 0.85rem;
+}
+.rg-pnl {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+  margin: 0 0 14px;
+}
+.rg-pnl-cell {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 6px; font-size: 0.75rem; color: var(--muted);
+}
+.rg-pnl-cell strong { display: block; font-size: 1.05rem; color: var(--ink); margin-top: 2px; }
+.rg-pnl-num { font-weight: 800; font-size: 0.95rem; color: var(--ink); }
+.rg-remain { color: var(--muted); font-size: 0.88rem; font-weight: 700; margin: 0 0 10px; }
+.rg-find { margin: 4px 0 10px; }
+.rg-find.rg-find-pop { animation: rg-pop 0.35s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes rg-pop {
+  0% { transform: scale(0.84) translateY(8px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.rg-find-note { color: var(--muted); font-size: 0.9rem; min-height: 1.3em; margin: 6px 0 0; }
+.rg-offer {
+  background: var(--accent-soft); border: 1px dashed var(--accent);
+  border-radius: 12px; padding: 12px 14px; margin: 8px 0 12px; text-align: left;
+}
+.rg-offer p { margin: 0 0 10px; font-weight: 600; color: var(--ink); }
+.rg-offer-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.rg-offer-btns .btn { padding: 11px 16px; font-size: 0.92rem; }
+#rg-dig-phase .btn-primary, #rg-result .btn-primary { margin-top: 4px; }
+#rg-result .btn-ghost, #rg-back-btn { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .rg-crate.rg-shake, .rg-find.rg-find-pop { animation: none; }
+}
 
 /* ---------- Content sections ---------- */
 .section { padding: 34px 16px 10px; }
