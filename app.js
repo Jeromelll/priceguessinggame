@@ -366,6 +366,8 @@
     el.itemCard.hidden = true; el.revealCard.hidden = true; el.resultsCard.hidden = true; el.countdown.hidden = true;
     if (el.rummageCard) el.rummageCard.hidden = true;
     if (el.progress) el.progress.hidden = false;
+    if ($("unit-meta")) $("unit-meta").hidden = false;
+    setModeOn("closer-mode-btn");
     el.closerEmoji.textContent = closer.item.e;
     el.closerName.textContent = closer.item.n;
     el.closerDesc.textContent = closer.item.d + " (" + closer.item.c + ")";
@@ -523,7 +525,7 @@
   function exitCloser() {
     maybeAbandon();
     el.closerCard.hidden = true;
-    startUnit(dailyDate, "daily");
+    startRummage(false);
   }
 
   // ---------- Battle Royale mode (live 10-minute rounds) ----------
@@ -545,6 +547,8 @@
     el.countdown.hidden = true; el.closerCard.hidden = true;
     if (el.rummageCard) el.rummageCard.hidden = true;
     if (el.progress) el.progress.hidden = false;
+    if ($("unit-meta")) $("unit-meta").hidden = false;
+    setModeOn("br-mode-btn");
     el.brCard.hidden = false;
     el.brInputRow.hidden = true; el.brResult.hidden = true; el.brShareHint.textContent = "";
     if (brChallenge) {
@@ -717,7 +721,7 @@
     maybeAbandon();
     brStopTimers();
     el.brCard.hidden = true;
-    startUnit(dailyDate, "daily");
+    startRummage(false);
   }
 
   // ---------- Rummage mode (sealed unit → pull finds one by one) ----------
@@ -769,6 +773,34 @@
     return rng() < 0.32;
   }
 
+  function rummageHammer(unit, rng) {
+    var total = 0, i;
+    for (i = 0; i < unit.length; i++) total += unit[i].p;
+    var mult = 0.62 + rng() * 0.76;
+    return Math.max(40, Math.round(total * mult / 25) * 25);
+  }
+
+  function setModeOn(id) {
+    var ids = ["rummage-mode-btn", "daily-mode-btn", "closer-mode-btn", "br-mode-btn"];
+    for (var i = 0; i < ids.length; i++) {
+      var b = $(ids[i]);
+      if (b) b.classList.toggle("is-on", ids[i] === id);
+    }
+  }
+
+  function rgRenderHaul() {
+    if (!el.rgHaul || !rg) return;
+    el.rgHaul.innerHTML = "";
+    for (var i = 0; i < ITEMS_PER_UNIT; i++) {
+      var li = document.createElement("li");
+      if (i < rg.pulls.length) {
+        li.className = "filled";
+        li.textContent = rg.unit[i].e;
+      }
+      el.rgHaul.appendChild(li);
+    }
+  }
+
   function rgReducedMotion() {
     return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
@@ -814,6 +846,8 @@
     el.countdown.hidden = true; el.closerCard.hidden = true; el.brCard.hidden = true;
     el.rummageCard.hidden = false;
     el.progress.hidden = true;
+    if ($("unit-meta")) $("unit-meta").hidden = true;
+    setModeOn("rummage-mode-btn");
     rgBusy = false;
 
     var d = dailyDate || new Date();
@@ -821,8 +855,10 @@
     var seed = bonus ? ("rummage-bonus-" + Date.now() + "-" + Math.floor(Math.random() * 1e9))
       : ("rummage-" + day);
     var rng = mulberry32(hashStr(seed + "-clues"));
+    var unit = buildUnit(seed);
     rg = {
-      day: day, seed: seed, unit: buildUnit(seed), rng: mulberry32(hashStr(seed + "-offers")),
+      day: day, seed: seed, unit: unit, rng: mulberry32(hashStr(seed + "-offers")),
+      hammer: rummageHammer(unit, mulberry32(hashStr(seed + "-hammer"))),
       bid: null, idx: 0, recovered: 0, pulls: [], offered: 0,
       phase: "bid", counted: false, bonus: !!bonus, pendingOffer: 0
     };
@@ -843,9 +879,9 @@
     }
 
     el.rgShareHint.textContent = "";
-    el.rgHint.textContent = "";
-    el.unitTitle.textContent = bonus ? "Bonus Rummage ♻️" : "Rummage — Sealed Unit";
+    el.unitTitle.textContent = bonus ? "Walk-in unit" : "On the lot";
     el.unitDate.textContent = fmtDate(d);
+    if (el.rgStage) el.rgStage.classList.remove("is-open");
     rgRenderStats();
 
     if (rg.idx >= ITEMS_PER_UNIT && rg.bid != null) {
@@ -865,26 +901,20 @@
     el.rgBidPhase.hidden = false;
     el.rgDigPhase.hidden = true;
     el.rgResult.hidden = true;
-    el.rgUnitName.textContent = rg.bonus ? "Sealed Bonus Unit" : "Today's Sealed Unit";
+    if (el.rgStage) { el.rgStage.classList.remove("is-open"); el.rgStage.classList.remove("is-done"); }
+    el.rgUnitName.textContent = rg.bonus ? "Walk-in unit" : "Today's unit";
+    el.rgHammer.textContent = fmtMoney(rg.hammer);
     el.rgClues.innerHTML = "";
     for (var i = 0; i < rg.clues.length; i++) {
       var li = document.createElement("li");
       li.textContent = rg.clues[i];
       el.rgClues.appendChild(li);
     }
-    el.rgInput.value = "";
-    setTimeout(function () { el.rgInput.focus(); }, 60);
   }
 
-  function rgLockBid() {
+  function rgTake() {
     if (!rg || rg.phase !== "bid") return;
-    var raw = el.rgInput.value.trim();
-    if (!/^\d{1,7}$/.test(raw)) {
-      el.rgHint.textContent = "Enter a whole dollar amount, e.g. 800.";
-      el.rgInput.focus();
-      return;
-    }
-    rg.bid = parseInt(raw, 10);
+    rg.bid = rg.hammer;
     persistRg();
     rgStartDig(false);
   }
@@ -898,9 +928,11 @@
     el.rgOffer.hidden = true;
     el.rgPullBtn.hidden = false;
     el.rgPullBtn.disabled = false;
-    el.rgPullBtn.textContent = rg.idx === 0 ? "Crack it open — first find →" : "Pull next find →";
-    el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " left in the unit";
+    el.rgPullBtn.textContent = rg.idx === 0 ? "Reach in" : "Dig deeper";
+    el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " still in the dark";
+    if (el.rgStage) el.rgStage.classList.add("is-open");
     rgRenderPnl();
+    rgRenderHaul();
     if (resuming && rg.pulls.length) {
       var last = rg.unit[rg.idx - 1];
       if (last) {
@@ -911,6 +943,11 @@
         el.rgFindPrice.textContent = fmtMoney(last.p);
         el.rgFindNote.textContent = "Last find — keep digging.";
       }
+    } else if (!resuming && rg.idx === 0) {
+      var token = rg;
+      setTimeout(function () {
+        if (rg === token && rg.phase === "dig" && rg.idx === 0) rgPull();
+      }, rgReducedMotion() ? 0 : 560);
     }
   }
 
@@ -923,9 +960,9 @@
     el.rgFind.hidden = true;
     el.rgFindNote.textContent = "";
     el.rgFindPrice.textContent = "";
-    el.rgCrateDig.classList.remove("rg-shake");
-    void el.rgCrateDig.offsetWidth;
-    el.rgCrateDig.classList.add("rg-shake");
+    el.rgDoor.classList.remove("rg-shake");
+    void el.rgDoor.offsetWidth;
+    el.rgDoor.classList.add("rg-shake");
     var delay = rgReducedMotion() ? 0 : 420;
     var token = rg;
     setTimeout(function () {
@@ -994,6 +1031,7 @@
     rg.idx++;
     persistRg();
     rgRenderPnl();
+    rgRenderHaul();
     rg.phase = "dig";
     rgBusy = false;
     el.rgOffer.hidden = true;
@@ -1004,8 +1042,8 @@
     } else {
       el.rgPullBtn.hidden = false;
       el.rgPullBtn.disabled = false;
-      el.rgPullBtn.textContent = "Pull next find →";
-      el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " left in the unit";
+      el.rgPullBtn.textContent = "Dig deeper";
+      el.rgRemain.textContent = (ITEMS_PER_UNIT - rg.idx) + " still in the dark";
     }
   }
 
@@ -1015,6 +1053,7 @@
     el.rgBidPhase.hidden = true;
     el.rgDigPhase.hidden = true;
     el.rgResult.hidden = false;
+    if (el.rgStage) { el.rgStage.classList.add("is-open"); el.rgStage.classList.add("is-done"); }
     var pnl = rg.recovered - rg.bid;
     var trueTotal = rgTrueTotal();
     var closeness = scoreItem(rg.bid, trueTotal);
@@ -1141,10 +1180,12 @@
     brShareBtn: $("br-share-btn"), brShareHint: $("br-share-hint"), brChallenge: $("br-challenge"),
     brBoard: $("br-board"), brBackBtn: $("br-back-btn"),
     rummageModeBtn: $("rummage-mode-btn"), rummageCard: $("rummage-card"),
-    rgBidPhase: $("rg-bid-phase"), rgCrate: $("rg-crate"), rgUnitName: $("rg-unit-name"),
-    rgClues: $("rg-clues"), rgInput: $("rg-input"), rgBidBtn: $("rg-bid-btn"), rgHint: $("rg-hint"),
+    dailyModeBtn: $("daily-mode-btn"),
+    rgBidPhase: $("rg-bid-phase"), rgDoor: $("rg-door"), rgStage: $("rg-stage"),
+    rgUnitName: $("rg-unit-name"), rgHammer: $("rg-hammer"),
+    rgClues: $("rg-clues"), rgTakeBtn: $("rg-take-btn"), rgPassBtn: $("rg-pass-btn"),
     rgDigPhase: $("rg-dig-phase"), rgPaid: $("rg-paid"), rgRec: $("rg-rec"), rgPnlVal: $("rg-pnl-val"),
-    rgCrateDig: $("rg-crate-dig"), rgRemain: $("rg-remain"),
+    rgRemain: $("rg-remain"), rgHaul: $("rg-haul"),
     rgFind: $("rg-find"), rgFindEmoji: $("rg-find-emoji"), rgFindName: $("rg-find-name"),
     rgFindDesc: $("rg-find-desc"), rgFindPrice: $("rg-find-price"), rgFindNote: $("rg-find-note"),
     rgOffer: $("rg-offer"), rgOfferText: $("rg-offer-text"), rgSellBtn: $("rg-sell-btn"),
@@ -1369,6 +1410,7 @@
   function startUnit(d, m) {
     maybeAbandon();
     mode = m; date = d; idx = 0; guesses = []; results = []; finished = false;
+    setModeOn("daily-mode-btn");
     unit = buildUnit(m === "daily" ? "daily-" + dateKey(d) : "bonus-" + d.getTime() + "-" + Math.floor(Math.random() * 1e9));
 
     var num = puzzleNum(d);
@@ -1383,6 +1425,7 @@
     el.closerCard.hidden = true;
     if (el.rummageCard) el.rummageCard.hidden = true;
     if (el.progress) el.progress.hidden = false;
+    if ($("unit-meta")) $("unit-meta").hidden = false;
     if (typeof brStopTimers === "function") brStopTimers();
     el.brCard.hidden = true;
     el.shareHint.textContent = "";
@@ -1433,10 +1476,9 @@
 
     // Rummage mode
     el.rummageModeBtn.addEventListener("click", function () { startRummage(false); });
-    el.rgBidBtn.addEventListener("click", rgLockBid);
-    el.rgInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); rgLockBid(); }
-    });
+    el.dailyModeBtn.addEventListener("click", function () { startUnit(dailyDate, "daily"); });
+    el.rgTakeBtn.addEventListener("click", rgTake);
+    el.rgPassBtn.addEventListener("click", function () { startRummage(true); });
     el.rgPullBtn.addEventListener("click", rgPull);
     el.rgSellBtn.addEventListener("click", rgSell);
     el.rgKeepBtn.addEventListener("click", rgKeep);
@@ -1482,7 +1524,7 @@
     loadLeaderboard();
     initAuth();
 
-    startUnit(d, "daily");
+    startRummage(false);
 
     window.addEventListener("pagehide", maybeAbandon);
 
@@ -1491,6 +1533,8 @@
     if (bm) {
       brChallenge = Math.min(500, parseInt(bm[1], 10) || 0);
       startBr();
+    } else if (m) {
+      startUnit(d, "daily");
     }
   }
 
