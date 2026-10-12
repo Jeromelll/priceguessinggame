@@ -59,3 +59,13 @@ CREATE TABLE IF NOT EXISTS events_rejected (
   page TEXT,
   reason TEXT NOT NULL
 );
+
+-- One-time OAuth state; nonce is bound to an HttpOnly browser cookie.
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state TEXT PRIMARY KEY,
+  nonce TEXT NOT NULL,
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'github', 'x')),
+  verifier TEXT,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);

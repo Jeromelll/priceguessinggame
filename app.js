@@ -14,8 +14,8 @@
   var STORAGE_ANON_PID = "pgg_anon_pid_v1";
   var STORAGE_NAME = "pgg_name_v1";
   var dailyPrefix = "pgg_daily_";
-  // Google sign-in state (session cookie is authoritative; this mirrors it for UI)
-  var auth = { ready: false, user: null, clientId: null };
+  // Session cookie is authoritative; this mirrors the signed-in profile for UI.
+  var auth = { ready: false, user: null, clientId: null, providers: [] };
 
   // ---------- Utils ----------
   function $(id) { return document.getElementById(id); }
@@ -135,7 +135,7 @@
     } catch (e) { /* analytics must never break the game */ }
   }
 
-  // effective leaderboard identity: Google session maps to "g-"+sub server-side
+  // Signed-in identities map to the existing "g-" leaderboard namespace server-side.
   function effectivePid() {
     return auth.user && auth.user.sub ? "g-" + auth.user.sub : pidGet();
   }
@@ -156,20 +156,23 @@
   }
 
   function initAuth() {
-    fetch(apiBase() + "/api/auth/config", fetchOpts())
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
-        if (!d || !d.ok || !d.clientId) return; // not configured → stay anonymous
-        auth.clientId = d.clientId;
+    Promise.all([
+      fetch(apiBase() + "/api/auth/config", fetchOpts()).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(apiBase() + "/api/auth/providers", fetchOpts()).then(function (r) { return r.ok ? r.json() : null; }),
+      fetch(apiBase() + "/api/auth/me", fetchOpts()).then(function (r) { return r.ok ? r.json() : null; })
+    ])
+      .then(function (results) {
+        var config = results[0], providers = results[1], user = results[2];
+        auth.clientId = config && config.ok ? config.clientId : null;
+        auth.providers = providers && providers.ok && Array.isArray(providers.providers) ? providers.providers : [];
         auth.ready = true;
-        return fetch(apiBase() + "/api/auth/me", fetchOpts())
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (u) {
-            if (u && u.ok) { auth.user = u; updateUserChip(); refreshNameChip(); }
-          });
+        if (user && user.ok) auth.user = user;
+        renderOAuthButtons();
+        updateUserChip();
+        if (auth.user) refreshNameChip();
       })
       .then(function () {
-        if (!auth.clientId) return;
+        if (!auth.clientId || auth.providers.indexOf("google") >= 0) return;
         loadGis(function () {
           if (!window.google || !google.accounts || !google.accounts.id) return;
           google.accounts.id.initialize({ client_id: auth.clientId, callback: onGoogleCredential });
@@ -181,11 +184,31 @@
 
   function renderGButton() {
     var box = $("gbtn");
-    if (!box || !auth.ready || !window.google || !google.accounts || !google.accounts.id) return;
+    if (!box) return;
+    if (!auth.ready || !auth.clientId || auth.providers.indexOf("google") >= 0 || !window.google || !google.accounts || !google.accounts.id) {
+      box.hidden = true;
+      return;
+    }
     if (!auth.user && box.childElementCount === 0) {
       google.accounts.id.renderButton(box, { theme: "outline", size: "medium", text: "signin", shape: "pill" });
     }
     box.hidden = !!auth.user;
+  }
+
+  function renderOAuthButtons() {
+    var box = $("oauth-buttons");
+    if (!box) return;
+    box.textContent = "";
+    var labels = { google: "Continue with Google", github: "Continue with GitHub", x: "Continue with X" };
+    auth.providers.forEach(function (provider) {
+      if (!labels[provider]) return;
+      var a = document.createElement("a");
+      a.className = "oauth-button oauth-" + provider;
+      a.href = "https://priceguessinggame.com/api/auth/oauth/start?provider=" + encodeURIComponent(provider);
+      a.textContent = labels[provider];
+      box.appendChild(a);
+    });
+    box.hidden = !!auth.user || box.childElementCount === 0;
   }
 
   function updateUserChip() {
@@ -194,12 +217,14 @@
     if (auth.user) {
       nm.textContent = auth.user.name || "Signed in";
       if (auth.user.picture) { img.src = auth.user.picture; img.hidden = false; }
+      else { img.removeAttribute("src"); img.hidden = true; }
       chip.hidden = false;
       out.hidden = false;
     } else {
       chip.hidden = true;
       out.hidden = true;
     }
+    renderOAuthButtons();
     renderGButton();
   }
 
@@ -1507,7 +1532,7 @@
     function refreshNameChip() {
       if (auth.user && auth.user.name) {
         el.nameChip.textContent = "Playing as " + auth.user.name + " ✅";
-        el.nameChip.title = "Signed in with Google — sign out from the header";
+        el.nameChip.title = "Signed in — sign out from the header";
       } else {
         el.nameChip.textContent = "Playing as " + nameGet() + " ✏️";
         el.nameChip.title = "Change your bidder name";

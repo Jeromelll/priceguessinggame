@@ -14,10 +14,18 @@
 //   POST /api/evt accepts { e, p, x1, x2 } from app.js.
 //   No cookies, no IP, no pid/sub/email, no bid amounts, no file contents.
 import { ITEMS } from "./items.mjs";
+import { fetchOAuthProfile } from "./oauth.js";
 
 const EPOCH = { y: 2026, m: 9, d: 4 }; // puzzle #1
 const ITEMS_PER_UNIT = 5;
 const SESSION_TTL = 30 * 86400; // 30 days
+const AUTH_ORIGIN = "https://priceguessinggame.com";
+const OAUTH_STATE_TTL = 1800;
+const OAUTH_PROVIDERS = {
+  google: { client: "GOOGLE_CLIENT_ID", secret: "GOOGLE_CLIENT_SECRET", authorize: "https://accounts.google.com/o/oauth2/v2/auth", scope: "openid email profile" },
+  github: { client: "GITHUB_CLIENT_ID", secret: "GITHUB_CLIENT_SECRET", authorize: "https://github.com/login/oauth/authorize", scope: "read:user user:email" },
+  x: { client: "X_CLIENT_ID", secret: "X_CLIENT_SECRET", authorize: "https://twitter.com/i/oauth2/authorize", scope: "users.read tweet.read" },
+};
 // Battle Royale: continuous 10-minute rounds, everyone plays the same unit
 const BR_ROUND_MS = 600000;   // 10 min
 const BR_GRACE_MS = 120000;   // submissions accepted 2 min past round end
@@ -103,7 +111,7 @@ async function readBody(request) {
 }
 function getCookie(request, name) {
   const cookie = request.headers.get("Cookie") || "";
-  const m = new RegExp("(?:^|;\\s*)" + name + "=([A-Za-z0-9-]+)").exec(cookie);
+  const m = new RegExp("(?:^|;\\s*)" + name + "=([A-Za-z0-9_-]+)").exec(cookie);
   return m ? m[1] : null;
 }
 
@@ -282,6 +290,88 @@ async function handleAuthLogout(request, env) {
   const sid = getCookie(request, "pgg_session");
   if (sid) await env.DB.prepare(`DELETE FROM sessions WHERE sid = ?1`).bind(sid).run();
   return json({ ok: true }, 200, sessionCookie("", 0));
+}
+
+function randomToken(bytes = 32) {
+  const data = crypto.getRandomValues(new Uint8Array(bytes));
+  return btoa(String.fromCharCode(...data)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function stateCookie(nonce, maxAge = OAUTH_STATE_TTL) {
+  return `pgg_oauth_nonce=${nonce}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/api/auth/oauth`;
+}
+function oauthRedirectUri() { return AUTH_ORIGIN + "/api/auth/oauth/callback"; }
+function oauthCredentials(env, provider) {
+  const cfg = OAUTH_PROVIDERS[provider];
+  return cfg && env[cfg.client] && env[cfg.secret] ? cfg : null;
+}
+
+async function handleAuthProviders(env) {
+  const providers = Object.keys(OAUTH_PROVIDERS).filter(id => oauthCredentials(env, id));
+  return json({ ok: true, providers });
+}
+
+async function handleOAuthStart(request, env, provider) {
+  const cfg = oauthCredentials(env, provider);
+  if (!cfg) return json({ ok: false, error: "provider unavailable" }, 404);
+  const state = randomToken();
+  const nonce = randomToken();
+  const verifier = provider === "x" ? randomToken(48) : null;
+  const expiresAt = Date.now() + OAUTH_STATE_TTL * 1000;
+  await env.DB.prepare(
+    "INSERT INTO oauth_states (state, nonce, provider, verifier, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)"
+  ).bind(state, nonce, provider, verifier, expiresAt).run();
+
+  const authorize = new URL(cfg.authorize);
+  authorize.searchParams.set("client_id", env[cfg.client]);
+  authorize.searchParams.set("redirect_uri", oauthRedirectUri());
+  authorize.searchParams.set("response_type", "code");
+  authorize.searchParams.set("scope", cfg.scope);
+  authorize.searchParams.set("state", state);
+  if (provider === "x") {
+    authorize.searchParams.set("code_challenge_method", "S256");
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    authorize.searchParams.set("code_challenge", btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
+  }
+  return new Response(null, { status: 302, headers: { location: authorize.toString(), "cache-control": "no-store", "set-cookie": stateCookie(nonce) } });
+}
+
+async function handleOAuthCallback(request, env, url) {
+  const state = url.searchParams.get("state") || "";
+  const code = url.searchParams.get("code") || "";
+  const nonce = getCookie(request, "pgg_oauth_nonce");
+  const clearNonce = { "set-cookie": stateCookie("", 0) };
+  if (!state || !nonce) return json({ ok: false, error: "invalid oauth state" }, 400, clearNonce);
+
+  // The matching, unexpired state is consumed in one D1 statement, so replay and races fail closed.
+  const row = await env.DB.prepare(
+    "DELETE FROM oauth_states WHERE state = ?1 AND nonce = ?2 AND expires_at > ?3 RETURNING provider, verifier"
+  ).bind(state, nonce, Date.now()).first();
+  if (!row) return json({ ok: false, error: "invalid oauth state" }, 400, clearNonce);
+  if (!code || url.searchParams.has("error")) return json({ ok: false, error: "oauth authorization failed" }, 400, clearNonce);
+  const cfg = oauthCredentials(env, row.provider);
+  if (!cfg) return json({ ok: false, error: "provider unavailable" }, 503, clearNonce);
+
+  let profile;
+  try { profile = await fetchOAuthProfile(row.provider, env, code, oauthRedirectUri(), row.verifier); }
+  catch (e) { return json({ ok: false, error: "oauth profile unavailable" }, 401, clearNonce); }
+  if (!profile || typeof profile.sub !== "string" || !profile.sub || !["google", "github", "x"].includes(row.provider)) {
+    return json({ ok: false, error: "oauth profile unavailable" }, 401, clearNonce);
+  }
+  const sub = row.provider === "google" ? profile.sub : row.provider + "-" + profile.sub;
+  const name = cleanName(profile.name || profile.email || "Bidder");
+  const email = typeof profile.email === "string" ? profile.email.slice(0, 120) : null;
+  const picture = typeof profile.picture === "string" && /^https:\/\//.test(profile.picture) ? profile.picture.slice(0, 500) : null;
+  await env.DB.prepare(
+    `INSERT INTO users (sub, name, email, picture) VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT(sub) DO UPDATE SET name = ?2, email = ?3, picture = ?4, last_login = datetime('now')`
+  ).bind(sub, name, email, picture).run();
+  const sid = crypto.randomUUID() + "-" + Date.now().toString(36);
+  await env.DB.prepare("INSERT INTO sessions (sid, sub, expires_at) VALUES (?1, ?2, ?3)")
+    .bind(sid, sub, Date.now() + SESSION_TTL * 1000).run();
+  const headers = new Headers({ location: AUTH_ORIGIN + "/", "cache-control": "no-store" });
+  headers.append("set-cookie", sessionCookie(sid, SESSION_TTL)["set-cookie"]);
+  headers.append("set-cookie", clearNonce["set-cookie"]);
+  return new Response(null, { status: 302, headers });
 }
 
 // ---------- POST /api/score ----------
@@ -531,6 +621,10 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if ((path === "/api/auth/oauth/start" || path === "/api/auth/oauth/callback") && url.hostname !== "priceguessinggame.com") {
+      return Response.redirect(AUTH_ORIGIN + path + url.search, 302);
+    }
+
     if (request.method === "OPTIONS") {
       return withCors(request, new Response(null, {
         status: 204,
@@ -550,6 +644,20 @@ export default {
 
     if (path === "/api/auth/config" && request.method === "GET") {
       try { return withCors(request, await handleAuthConfig(env)); }
+      catch (e) { return json({ ok: false, error: "server error" }, 500); }
+    }
+    if (path === "/api/auth/providers" && request.method === "GET") {
+      try { return withCors(request, await handleAuthProviders(env)); }
+      catch (e) { return json({ ok: false, error: "server error" }, 500); }
+    }
+    if (path === "/api/auth/oauth/start" && request.method === "GET") {
+      try {
+        const provider = url.searchParams.get("provider") || "";
+        return withCors(request, await handleOAuthStart(request, env, provider));
+      } catch (e) { return json({ ok: false, error: "server error" }, 500); }
+    }
+    if (path === "/api/auth/oauth/callback" && request.method === "GET") {
+      try { return withCors(request, await handleOAuthCallback(request, env, url)); }
       catch (e) { return json({ ok: false, error: "server error" }, 500); }
     }
 

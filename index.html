@@ -60,7 +60,7 @@
     {
       "@type": "Question",
       "name": "Is there a leaderboard?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Everyone plays the same daily unit and your finished score is ranked instantly against all other bidders worldwide — including the average bid players placed on each item. No account needed; you just pick a bidder name." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Everyone plays the same daily unit and your finished score is ranked instantly against all other bidders worldwide — including the average bid players placed on each item. An account is optional; you can also play anonymously with a bidder name." }
     },
     {
       "@type": "Question",
@@ -75,7 +75,7 @@
     {
       "@type": "Question",
       "name": "Is the game free?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely free, no account or sign-up needed. Everything runs in your browser and your streak is saved on your device." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely free. You can play without an account, or optionally sign in with Google, GitHub or X. Your streak is saved on your device." }
     }
   ]
 }
@@ -95,6 +95,7 @@
       <a href="#faq">FAQ</a>
     </nav>
     <div class="auth-area" id="auth-area">
+      <div id="oauth-buttons" class="oauth-buttons" hidden></div>
       <div id="gbtn" hidden></div>
       <span class="user-chip" id="user-chip" hidden>
         <img id="user-pic" class="user-pic" alt="" hidden />
@@ -340,7 +341,7 @@
     </details>
     <details>
       <summary>Is it free? Do I need an account?</summary>
-      <p>Completely free, no account, no sign-up, no download. The whole game runs in your browser and works on phones, tablets and desktops.</p>
+      <p>Completely free, no download. You can play anonymously without signing up, or optionally sign in with Google, GitHub or X. The game works on phones, tablets and desktops.</p>
     </details>
     <details>
       <summary>What is Close Call mode?</summary>
@@ -364,7 +365,7 @@
 <footer class="site-footer">
   <div class="wrap">
     <p>🏷️ PriceGuessingGame — a free daily auction game about guessing what things are really worth.</p>
-    <p class="foot-note">Made for people who watch storage auctions and shout bids at the TV.</p>
+    <p class="foot-note">Made for people who watch storage auctions and shout bids at the TV. <a href="/privacy.html">Privacy</a></p>
   </div>
 </footer>
 
