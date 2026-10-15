@@ -621,6 +621,12 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // www -> apex 301（需在 Cloudflare 加 www DNS 记录并把 www 路由/自定义域指到本 Worker 才生效）
+    if (url.hostname === "www.priceguessinggame.com") {
+      url.hostname = "priceguessinggame.com";
+      return Response.redirect(url.toString(), 301);
+    }
+
     if ((path === "/api/auth/oauth/start" || path === "/api/auth/oauth/callback") && url.hostname !== "priceguessinggame.com") {
       return Response.redirect(AUTH_ORIGIN + path + url.search, 302);
     }

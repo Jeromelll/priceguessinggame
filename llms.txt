@@ -1,0 +1,7 @@
+# Price Guessing Game
+
+> Price Guessing Game (https://priceguessinggame.com) is a free daily browser game: bid on 5 mystery storage auction items, see the real prices, compare bids with players worldwide on the global leaderboard, and share your score like Wordle. New puzzle every day. No sign-up.
+
+## Pages
+- [Play](https://priceguessinggame.com/): today's puzzle, leaderboard and FAQ
+- [Privacy](https://priceguessinggame.com/privacy.html)
