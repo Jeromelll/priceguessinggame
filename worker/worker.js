@@ -7,6 +7,7 @@
 //   GET  /api/auth/me          — current session identity
 //   POST /api/auth/logout      — destroy session
 //   POST /api/evt              — cookieless analytics (whitelist only; unknown → events_rejected)
+//   GET  /<indexnow-key>.txt   — Bing IndexNow key (text/plain; not the Pages SPA)
 // Everything else is proxied to the Pages deployment.
 //
 // Privacy-first analytics via D1 (DB / pgp-db):
@@ -118,6 +119,9 @@ function getCookie(request, name) {
 // ---------- cookieless analytics (I2B64 pattern) ----------
 const EVENT_NAMES = new Set(["page_view", "game_start", "game_complete", "round_abandon", "share"]);
 const ASSET_EXTS = /\.(css|js|mjs|map|png|jpe?g|gif|svg|webp|avif|ico|txt|xml|json|webmanifest|woff2?)$/i;
+// Public Bing IndexNow key. Body of /418ec399e2124793900f12e9833f600b.txt must stay exactly this value.
+const INDEXNOW_KEY = "418ec399e2124793900f12e9833f600b";
+const INDEXNOW_PATH = "/" + INDEXNOW_KEY + ".txt";
 
 function deviceType(ua) {
   if (!ua) return "unknown";
@@ -697,6 +701,19 @@ export default {
     if (path === "/api/br/state" && request.method === "GET") {
       try { return withCors(request, await handleBrState(request, env, url)); }
       catch (e) { return json({ ok: false, error: "server error" }, 500); }
+    }
+
+    // IndexNow verifies this URL with a plain-text GET. Pages is an SPA: unknown paths
+    // are index.html (200, text/html). Return the key here so the proxy never runs.
+    if (path === INDEXNOW_PATH && (request.method === "GET" || request.method === "HEAD")) {
+      return new Response(INDEXNOW_KEY + "\n", {
+        status: 200,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "public, max-age=86400",
+          "x-content-type-options": "nosniff",
+        },
+      });
     }
 
     // everything else → Pages (server-side page_view for HTML only; no client page_view)
